@@ -1,0 +1,280 @@
+WILDFIND
+Swipe through abandoned places in the UK. Works with no internet.
+
+
+OPENING IT
+----------
+Double click WildFind.html. It opens in your browser. That is the whole
+install. Nothing runs in the background, nothing phones home, and it works
+in aeroplane mode.
+
+Everything it needs is in this folder, so you can copy the folder to a USB
+stick or another machine and it will still work.
+
+
+USING IT
+--------
+Near / distance      Type a town in the Near box and pick a distance. You can
+                     also paste coordinates, like 53.38,-1.47
+                     Or press the target button beside it to choose on a map:
+                     drag the map until the middle is on the spot, set the
+                     circle with the slider, then Use this area.
+Kinds                The row of chips filters by type. Tap one to switch it
+                     off. Scroll the row sideways for the rest.
+Drag sideways        Right saves it to your list. Left hides it for good.
+                     Only sites with real photographs are dealt.
+                     The two buttons underneath do the same thing.
+< and > on the photo Step through that site's photographs. Swiping up or down
+                     on the picture does the same, and so do the up and down
+                     arrow keys. None of it counts as a decision.
+Saved                Your shortlist. Tick a site off once you have been, add
+                     notes, or remove it. Sites are grouped by nearest town so
+                     you can see which ones make a day out together.
+List or Map          In Saved, Map shows your saved sites pinned on an outline
+                     of Britain. Drag to move, scroll or pinch to zoom, click a
+                     pin for its details. Orange still to visit, hollow done.
+Menu (top right)     Counts, deck order, dark mode, backups, and a way to
+                     bring back everything you hid.
+
+Keyboard: left and right arrows decide, up and down step through photographs.
+
+
+GETTING THE REAL DATA IN
+------------------------
+The GitHub copy comes with the full UK site list but no photographs, which
+are too big to keep there. Until you fetch them, each card shows a labelled
+sketch of that kind of structure.
+
+First time only: install Python. Open the Microsoft Store, search for
+Python 3.12, click Get. That is all; the script handles the rest.
+
+Then double click:
+
+    tools\FETCH DATA.bat
+
+Two stages, and you can stop either with Ctrl+C and resume later:
+
+    Stage 1  osm      the whole UK site list     a few minutes, plus the download
+    Stage 2  photos   photographs                about half a day
+
+Stage 1 downloads a 2.1 GB extract of OpenStreetMap, filters it on your
+machine, and then deletes the extract again. What is left is a few megabytes
+of data files. After that you have every location offline with grid
+references, which is the useful part. Stage 2 is the long one and is slow on
+purpose (see below). It is capped at 35,000 sites and 9.5 GB, and is worth
+leaving running over a night or two.
+
+Only want one stage:
+
+    tools\FETCH DATA.bat -Stage osm
+    tools\FETCH DATA.bat -Stage photos
+
+Want more or fewer photographs:
+
+    tools\FETCH DATA.bat -Stage photos -MaxPhotoGB 6 -PhotosPerSite 2
+
+Keep the 2.1 GB extract instead of deleting it:
+
+    tools\FETCH DATA.bat -Stage osm -KeepExtract
+
+
+WHY A BULK EXTRACT AND NOT A LIVE API
+-------------------------------------
+The obvious way to get this data is the Overpass API, which answers live
+queries against OpenStreetMap. The first version of this script did exactly
+that, and it does not work at this scale. Overpass is a free service shared
+by everyone, and its own error page says the public endpoint is for
+browser-based and human-operated tools, and that heavy or automated users
+should run their own instance. Asking it for fifty thousand features meant
+single queries running for over ten minutes and mostly returning "at
+capacity".
+
+Geofabrik publishes a complete extract of the UK every night for precisely
+this purpose. Downloading it once and filtering locally is faster, complete
+rather than partial, and does not lean on a service that is not meant for
+it. That is why there is a Python step: reading the extract needs the osmium
+library, which the script installs for you.
+
+
+HOW THE PHOTO STAGE STAYS POLITE
+--------------------------------
+Photographs could be found by asking Commons "what is near here?" 35,000
+times. Wikimedia's robot policy says not to: bulk data should come from
+their dumps, not the live API. Geograph, where most of the photos come from,
+says the same thing more bluntly about its own site.
+
+So the photo stage:
+
+  - Downloads Commons' list of where every photograph was taken, once
+    (about 770 MB), and does all the matching on your machine. That replaces
+    35,000 searches with one file.
+  - Keeps each site's shortlist (a few MB) and deletes the big list before
+    any images download, so the run stays inside 10 GB.
+  - Asks the live API only for what the list cannot give - each file's
+    address, author and licence - fifty files per request, and tells the
+    API to refuse it whenever Wikimedia's databases are under strain.
+  - Downloads one image at a time, never in parallel, over one connection
+    kept open between requests. After each one it waits 0.2 s plus half as
+    long as that answer took, so it slows down whenever the servers do,
+    and it backs right off if asked to.
+  - Asks for 640 px copies and shrinks them to 500 px on your machine.
+    Most 640 px copies already exist on Wikimedia's servers (many Geograph
+    originals are 640 px to begin with), whereas 500 px ones mostly have to
+    be made on request, which measured at 0.6-1.2 s of their servers' time
+    per photo. Downloading a little more data spares them that work.
+  - Never touches Geograph's own servers. Its photos reach Commons through
+    Geograph's bulk upload, which is the route they ask people to use.
+
+If your internet drops part way, or anything else stops the photo stage,
+it waits five minutes and tries again, for up to 12 hours, so a run left
+overnight carries on by itself. Close the window to stop it for good.
+
+
+THE NUMBERS
+-----------
+From OpenStreetMap's own tag statistics for the UK:
+
+    historic=ruins      26,814 features   only 3,739 of them named
+    building=ruins      13,900
+    military=bunker      3,460
+    man_made=mineshaft   3,273
+    plus mines, forts, adits, abandoned railways and more
+
+So the pool is comfortably over 50,000. Only about 14% carry a name, so this
+app includes the unnamed ones too. An unnamed mineshaft is still a real place
+you can walk to; it just gets described rather than named, as
+
+    Mineshaft near Wirksworth
+
+with its grid reference underneath. Named sites are sorted to the front of
+the photo queue, because they match their photographs far better.
+
+Photographs are kept at 500 px wide, three per site, and are capped at
+35,000 sites and 9.5 GB. Expect the photos folder to end up around
+6-9 GB. The run downloads roughly three times that over the internet,
+because each 640 px copy is shrunk after it arrives.
+
+Disk is not really the limit. Time is: about a day of downloading, which
+it does happily across several sittings.
+
+
+WHERE THE DATA COMES FROM
+-------------------------
+Sites and towns    OpenStreetMap, from Geofabrik's nightly UK and Isle of
+                   Man extracts. Open Database Licence. Real, community
+                   surveyed positions.
+Photographs        Wikimedia Commons, mostly Geograph photographs under
+                   CC BY-SA. Every picture's author and licence is shown on
+                   the card and listed in ATTRIBUTION.txt.
+
+Not 28DayLater or Urbexology. Their write ups and photographs are other
+people's copyright and their terms do not allow bulk copying, so this project
+does not scrape them. 28DL also deliberately withholds
+coordinates, so even a full copy would give you stories without locations,
+which is the one thing this app actually needs.
+
+
+HOW GOOD ARE THE PHOTOGRAPHS
+----------------------------
+Photographs are found by position, then kept only if their title names the
+site. A random sample of the first night's results (every nearby photo,
+named or not) showed why: about half were roads, fields and views that
+happened to be close by. So now:
+
+  - A photo is kept only when at least half of the distinctive words in
+    the site's name appear in its title. A word that is just the name of
+    a town or village within 10 km is ignored, so "Quarter Collieries"
+    does not pick up photos of Quarter village.
+  - Unnamed sites get no photographs: there is nothing to match.
+  - Photos downloaded before this rule that do not name their site were
+    moved to the photos-removed folder. Nothing was deleted; once you are
+    happy, delete that folder.
+
+After the first full run, 8,124 sites have at least one real photograph
+(a third of the named ones). Only those are dealt into the swipe deck. The
+other sites stay in the data, so a later, wider photo search can add more,
+and anything you saved earlier stays in Saved. If the data has no
+photographs at all, every site is dealt and shows a labelled sketch of that
+kind of structure instead.
+
+Title matching is not perfect. A photo can name the site and still show the
+road outside it, and a good photo with a vague title is missed. But it is
+by far the most reliable signal there is.
+
+
+YOUR SAVES
+----------
+Saves, ticks and notes are stored by your browser, for this folder, on this
+machine. They are not in any file you can see, so:
+
+  - Clearing browsing data can wipe them.
+  - They do not follow the folder to another machine on their own.
+
+Menu > Save a backup file writes them to a .json you can keep or move, and
+Load a backup file reads one back.
+
+
+BEFORE YOU GO ANYWHERE
+----------------------
+A position on a map is not permission to be there and not a statement that a
+place is safe. Most of these are on private land. Mines and quarries in
+particular kill people: bad air, flooded levels, rotten floors, old
+explosives. Derelict buildings bring asbestos and collapse. Check access and
+tell someone where you are going.
+
+
+IF SOMETHING GOES WRONG
+-----------------------
+Nothing shows up
+  data\locations.js is missing or empty. Run tools\FETCH DATA.bat
+
+"Running scripts is disabled on this system"
+  The .bat already works around this. If you are running the .ps1 directly,
+  use the .bat instead.
+
+"Python is not installed"
+  Microsoft Store, search Python 3.12, click Get, then run the .bat again.
+  Both stages need it.
+
+The 2.1 GB download stops part way
+  Run it again and it carries on from where it stopped. Geofabrik rebuilds
+  the file every night, so if a new version has appeared in the meantime it
+  starts that one from the beginning instead of mixing the two. The filtered
+  output is never half written.
+
+"not enough disk space"
+  Allow about 11 GB free. The 2.1 GB extract and the 0.8 GB location list
+  are each deleted as soon as they have been used, so the peak is the 9.5 GB
+  of photographs plus a margin. If the drive is tighter than that, the photo
+  stage stops early and leaves 1 GB free rather than filling it.
+
+"Another copy of the fetcher is already running"
+  Only one may work on the folder at a time. Let the other finish, or close
+  its window, then run this again. If no other window is open, it clears by
+  itself: the lock is released the moment the other copy stops.
+
+Photographs do not show
+  They live in the photos folder next to WildFind.html. If a file is missing
+  the card quietly falls back to the sketch rather than showing a broken
+  image, so a half finished download still looks fine.
+
+
+FOLDER
+------
+WildFind.html         the app
+data\locations.js     the sites
+data\places.js        towns for the Near box
+data\photos.js        which photographs belong to which site, and their credits
+data\map.js           the coastline for the Saved map (Natural Earth, public domain)
+photos\               the photographs, filed in numbered subfolders
+tools\FETCH DATA.bat  run this to fill it with real data
+tools\fetch-data.ps1  finds Python and hands over to fetch.py
+tools\fetch.py        runs both stages: downloads, filtering, the data files
+tools\extract-osm.py  pulls the sites out of the OpenStreetMap extract
+tools\photos.py       finds and downloads the photographs, politely
+tools\state\          progress files, so a stopped fetch can resume
+ATTRIBUTION.txt       picture credits, written by the fetcher
+README.md             the project's front page on GitHub
+tests\                checks for the fetcher scripts; not needed to use
+                      the app (python tests\run_all.py)
+NOTES.md              notes on how it all works, for whoever changes it next

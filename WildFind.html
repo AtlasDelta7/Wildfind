@@ -1,0 +1,1664 @@
+<!DOCTYPE html>
+<html lang="en-GB" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>WildFind</title>
+<style>
+/* ---------------------------------------------------------------
+   WildFind — offline field tool for UK abandoned sites
+   Visual language: Ordnance Survey sheet + mine-section drafting.
+   No webfonts, no CDN, no network. Windows system faces only.
+----------------------------------------------------------------- */
+:root{
+  --paper:#E6E3D3; --paper-2:#DDD9C6; --card:#F2EFE3;
+  --ink:#1B1D14; --ink-soft:#545644; --ink-faint:#8A8A76;
+  --rule:#B3AE95; --grid:#C6C1A8;
+  --orange:#E35205; --blue:#2E6E8E; --moss:#5C6B3C;
+  --shadow:rgba(27,29,20,.18);
+  --sea:#D8D3BD; --land:#F2EFE3;
+  --sheet:18rem;
+}
+:root[data-theme="dark"]{
+  --paper:#16180F; --paper-2:#1C1F15; --card:#22261A;
+  --ink:#E9E6D5; --ink-soft:#A6A28C; --ink-faint:#6F6D5C;
+  --rule:#3A3F2C; --grid:#272B1D;
+  --orange:#F26B22; --blue:#73AFCA; --moss:#9DB06A;
+  --shadow:rgba(0,0,0,.5);
+  --sea:#0F110A; --land:#2A2E20;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--paper); color:var(--ink);
+  font-family:Corbel,Candara,"Segoe UI",system-ui,sans-serif;
+  font-size:16px; line-height:1.45;
+  -webkit-text-size-adjust:100%;
+  overflow:hidden;
+}
+.display{
+  font-family:"Bahnschrift SemiCondensed","Bahnschrift","Franklin Gothic Medium","Arial Narrow",system-ui,sans-serif;
+  font-weight:600; letter-spacing:-.005em;
+}
+.data{font-family:Consolas,"DejaVu Sans Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+
+/* faint survey grid behind everything */
+body::before{
+  content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+  background-size:46px 46px; opacity:.5;
+}
+
+#app{position:relative;z-index:1;display:flex;flex-direction:column;height:100%;max-width:var(--sheet);max-width:min(560px,100%);margin:0 auto}
+
+/* ---- header ---- */
+header{display:flex;align-items:flex-end;justify-content:space-between;gap:1rem;padding:.9rem 1rem .55rem;border-bottom:1px solid var(--rule)}
+.mark{display:flex;align-items:baseline;gap:.6rem;min-width:0}
+.mark h1{font-size:1.35rem;line-height:1;letter-spacing:.01em}
+.mark h1 em{font-style:normal;color:var(--orange)}
+.mark span{font-size:.72rem;color:var(--ink-faint);white-space:nowrap}
+nav{display:flex;gap:.1rem}
+nav button{
+  font:inherit;font-size:.86rem;background:none;border:none;border-bottom:2px solid transparent;
+  color:var(--ink-soft);padding:.25rem .5rem;cursor:pointer;border-radius:2px 2px 0 0;white-space:nowrap
+}
+nav button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--orange);font-weight:600}
+nav button:focus-visible,.icon:focus-visible,.act:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.icon{background:none;border:1px solid var(--rule);color:var(--ink-soft);border-radius:3px;cursor:pointer;width:1.9rem;height:1.9rem;display:grid;place-items:center;font:inherit;font-size:.9rem}
+.icon:hover{color:var(--ink);border-color:var(--ink-soft)}
+
+/* ---- filter strip: reads like a map margin ---- */
+.margin{padding:.5rem 1rem .6rem;border-bottom:1px solid var(--rule);background:var(--paper-2)}
+.row{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+.row + .row{margin-top:.45rem}
+.row label{font-size:.78rem;color:var(--ink-soft);flex:none}
+.field{position:relative;flex:1 1 9rem;min-width:0}
+input[type=text]{
+  width:100%;font:inherit;font-size:.92rem;color:var(--ink);background:var(--card);
+  border:1px solid var(--rule);border-radius:3px;padding:.3rem .5rem
+}
+input[type=text]:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 2px color-mix(in srgb,var(--blue) 25%,transparent)}
+select{font:inherit;font-size:.92rem;color:var(--ink);background:var(--card);border:1px solid var(--rule);border-radius:3px;padding:.3rem .4rem}
+.ac{position:absolute;top:calc(100% + 2px);left:0;right:0;z-index:30;background:var(--card);border:1px solid var(--ink-soft);border-radius:3px;box-shadow:0 6px 18px var(--shadow);max-height:12rem;overflow:auto}
+.ac div{padding:.3rem .55rem;font-size:.88rem;cursor:pointer;display:flex;justify-content:space-between;gap:.5rem}
+.ac div:hover,.ac div[data-on="1"]{background:var(--paper-2)}
+.ac small{color:var(--ink-faint)}
+/* One row, scrolled sideways, so the filters never crowd out the card */
+.kinds{display:flex;gap:.3rem;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:1px;width:100%}
+.kinds::-webkit-scrollbar{display:none}
+.kinds button{
+  font:inherit;font-size:.74rem;padding:.1rem .5rem;cursor:pointer;white-space:nowrap;flex:none;
+  background:transparent;color:var(--ink-faint);border:1px solid transparent;border-radius:999px;
+  text-decoration:line-through;text-decoration-color:var(--ink-faint);opacity:.75
+}
+.kinds button[aria-pressed="true"]{
+  color:var(--ink);border-color:var(--rule);background:var(--card);
+  text-decoration:none;opacity:1
+}
+
+/* ---- panels ---- */
+.panel{flex:1;min-height:0;display:none;flex-direction:column}
+.panel[data-on="1"]{display:flex}
+
+/* ---- the card: the one bold element ---- */
+.stage{flex:1;min-height:0;position:relative;padding:.8rem 1rem 0;display:flex}
+.card{
+  position:absolute;inset:.8rem 1rem 0;background:var(--card);border:1px solid var(--ink-soft);
+  border-radius:4px;box-shadow:0 10px 28px -14px var(--shadow);overflow:hidden;
+  display:flex;flex-direction:column;touch-action:none;cursor:grab;will-change:transform
+}
+.card.back{box-shadow:none;opacity:.55;transform:scale(.985) translateY(6px)}
+.card:active{cursor:grabbing}
+.frame{position:relative;flex:1;min-height:0;background:var(--paper-2);overflow:hidden}
+.frame img,.frame svg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+/* a photo must not start the browser's own drag-the-image, which cancels the swipe */
+.frame img{-webkit-user-drag:none;user-select:none}
+.frame .credit{
+  position:absolute;left:0;right:0;bottom:0;padding:.3rem .5rem;font-size:.66rem;line-height:1.3;
+  color:#F2EFE3;background:linear-gradient(transparent,rgba(10,12,8,.72));text-align:right
+}
+/* one line only, so a long caption can never sprawl across the drawing */
+.frame .credit.drawn{
+  color:var(--ink-soft);background:linear-gradient(transparent,var(--paper-2));
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis
+}
+.pips{position:absolute;top:.5rem;left:50%;transform:translateX(-50%);display:flex;gap:.25rem;z-index:3}
+.pips i{width:1.3rem;height:3px;border-radius:2px;background:rgba(242,239,227,.4);box-shadow:0 0 2px rgba(0,0,0,.4)}
+.pips i[data-on="1"]{background:var(--orange)}
+.edge{
+  position:absolute;top:50%;transform:translateY(-50%);z-index:3;
+  width:2.3rem;height:2.3rem;border-radius:50%;cursor:pointer;
+  border:1px solid rgba(242,239,227,.45);background:rgba(12,14,9,.5);
+  color:#F4F1E6;font:inherit;font-size:1.35rem;line-height:1;
+  display:grid;place-items:center;padding:0 0 .12em 0
+}
+.edge.l{left:.5rem} .edge.r{right:.5rem}
+.edge:hover{background:rgba(12,14,9,.78);border-color:rgba(242,239,227,.8)}
+.edge:active{transform:translateY(-50%) scale(.93)}
+/* a drawn panel sits on pale paper, so the arrows invert there */
+.frame.drawn .edge{background:rgba(242,239,227,.72);color:var(--ink);border-color:var(--rule)}
+.frame.drawn .edge:hover{background:var(--card)}
+.edge:focus-visible{opacity:1;outline:2px solid var(--blue);outline-offset:-4px}
+.body{padding:.6rem .8rem .8rem;border-top:1px solid var(--rule)}
+.body h2{font-size:1.5rem;line-height:1.05;margin-bottom:.25rem}
+.meta{display:flex;justify-content:space-between;align-items:baseline;gap:.6rem;font-size:.8rem;color:var(--ink-soft)}
+.meta .away{color:var(--ink);white-space:nowrap}
+.gridref{font-size:.78rem;color:var(--ink-faint);margin-top:.2rem}
+.desc{font-size:.86rem;color:var(--ink-soft);margin-top:.4rem;max-height:3.1em;overflow:hidden}
+/* Photo credit, kept off the picture. CC BY-SA asks for one near each photo;
+   the full list is in ATTRIBUTION.txt. One line, so long credits truncate. */
+.photo-by{font-size:.66rem;color:var(--ink-faint);margin-top:.3rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stamp{
+  position:absolute;top:1.6rem;font-size:1.5rem;padding:.1rem .5rem;border:2px solid;border-radius:3px;
+  opacity:0;pointer-events:none;z-index:4;transform:rotate(-8deg)
+}
+.stamp.keep{right:1rem;color:var(--orange);border-color:var(--orange)}
+.stamp.drop{left:1rem;color:var(--ink-soft);border-color:var(--ink-soft);transform:rotate(8deg)}
+
+.acts{display:flex;justify-content:center;gap:1.6rem;padding:.8rem 0 1rem}
+.act{
+  width:3.1rem;height:3.1rem;border-radius:50%;background:var(--card);border:1px solid var(--ink-soft);
+  cursor:pointer;display:grid;place-items:center;color:var(--ink-soft);box-shadow:0 3px 10px -4px var(--shadow)
+}
+.act.keep{color:var(--orange);border-color:var(--orange)}
+.act:hover{transform:translateY(-1px)}
+.act svg{width:1.4rem;height:1.4rem;fill:none;stroke:currentColor;stroke-width:2.1;stroke-linecap:round}
+.hint{text-align:center;font-size:.72rem;color:var(--ink-faint);padding-bottom:.5rem}
+
+/* ---- lists ---- */
+.list{flex:1;min-height:0;overflow:auto;padding:.4rem 1rem 1.5rem}
+.group{font-size:.76rem;color:var(--ink-faint);padding:.7rem 0 .2rem;border-bottom:1px solid var(--rule);margin-bottom:.3rem}
+.item{display:flex;gap:.6rem;align-items:flex-start;padding:.5rem 0;border-bottom:1px solid var(--rule)}
+.item.done .nm{text-decoration:line-through;color:var(--ink-faint)}
+.tick{flex:none;width:1.25rem;height:1.25rem;margin-top:.15rem;border:1px solid var(--ink-soft);border-radius:2px;background:var(--card);cursor:pointer;display:grid;place-items:center;padding:0}
+.tick svg{width:.9rem;height:.9rem;fill:none;stroke:var(--orange);stroke-width:2.6;stroke-linecap:round;opacity:0}
+.item.done .tick svg{opacity:1}
+.item .txt{flex:1;min-width:0}
+.item .nm{font-size:.98rem;line-height:1.2}
+.item .sub{font-size:.76rem;color:var(--ink-soft);display:flex;justify-content:space-between;gap:.6rem;margin-top:.1rem}
+.item .note{width:100%;font:inherit;font-size:.78rem;color:var(--ink-soft);background:transparent;border:none;border-bottom:1px dotted var(--rule);margin-top:.25rem;padding:.1rem 0}
+.item .note:focus{outline:none;border-bottom-color:var(--blue)}
+.drop-x{flex:none;background:none;border:none;color:var(--ink-faint);cursor:pointer;font:inherit;font-size:1rem;padding:.1rem .2rem}
+.drop-x:hover{color:var(--orange)}
+
+.empty{padding:2.5rem 1.2rem;text-align:center;color:var(--ink-soft);font-size:.92rem}
+.empty strong{display:block;font-size:1.15rem;color:var(--ink);margin-bottom:.4rem}
+.empty button{font:inherit;font-size:.86rem;margin-top:.8rem;background:var(--ink);color:var(--paper);border:none;border-radius:3px;padding:.4rem .8rem;cursor:pointer}
+
+/* ---- saved: list or map ---- */
+#app.wide{max-width:min(1400px,100%)}
+.viewbar{display:flex;justify-content:flex-end;padding:.55rem 1rem 0}
+.seg{display:flex;border:1px solid var(--rule);border-radius:3px;overflow:hidden}
+.seg button{font:inherit;font-size:.78rem;padding:.15rem .75rem;background:transparent;color:var(--ink-soft);border:none;cursor:pointer}
+.seg button + button{border-left:1px solid var(--rule)}
+.seg button[aria-pressed="true"]{background:var(--card);color:var(--ink);font-weight:600}
+.mapbox{position:relative;flex:1;min-height:0;margin:.5rem 1rem 1rem;border:1px solid var(--ink-soft);border-radius:4px;overflow:hidden;background:var(--sea)}
+.mapbox[hidden]{display:none}
+.mapbox canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+.mapbox canvas:active{cursor:grabbing}
+.mapctl{position:absolute;top:.5rem;right:.5rem;display:flex;flex-direction:column;gap:.25rem}
+.mapctl button{width:2rem;height:2rem;font:inherit;font-size:1.05rem;line-height:1;background:var(--card);color:var(--ink);border:1px solid var(--rule);border-radius:3px;cursor:pointer;display:grid;place-items:center;padding:0}
+.mapctl button:hover{border-color:var(--ink-soft)}
+.mapnote{position:absolute;top:.5rem;left:.5rem;right:3rem;font-size:.8rem;color:var(--ink-soft);pointer-events:none}
+.mappop{position:absolute;left:.5rem;right:.5rem;bottom:.5rem;max-width:26rem;display:flex;gap:.6rem;align-items:flex-start;padding:.5rem .6rem;background:var(--card);border:1px solid var(--ink-soft);border-radius:4px;box-shadow:0 6px 18px -8px var(--shadow)}
+.mappop[hidden]{display:none}
+.mappop img{flex:none;width:4.5rem;height:4.5rem;object-fit:cover;border-radius:2px;background:var(--paper-2)}
+.mappop .txt{flex:1;min-width:0}
+.mappop .nm{font-size:.98rem;line-height:1.2}
+.mappop .sub{font-size:.76rem;color:var(--ink-soft);margin-top:.1rem}
+.mappop .note{font-size:.76rem;color:var(--ink-faint);margin-top:.15rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mappop.done .nm{text-decoration:line-through;color:var(--ink-faint)}
+.mappop.done .tick svg{opacity:1}
+
+/* ---- choosing the area on a map ---- */
+#pickArea svg{display:block}
+dialog.picker{max-width:min(960px,calc(100% - 1rem));width:calc(100% - 1rem);height:calc(100% - 1rem);max-height:none;padding:0;overflow:hidden}
+dialog.picker[open]{display:flex;flex-direction:column}
+.pk-head{padding:.7rem 1rem .1rem}
+.pk-head h3{margin:0}
+.pk-head span{font-size:.8rem;color:var(--ink-soft)}
+.mapbox.pk-map{margin:.5rem 1rem}
+.pk-foot{padding:0 1rem .8rem}
+.pk-r{display:flex;align-items:center;gap:.6rem;font-size:.86rem}
+.pk-r input{flex:1;accent-color:var(--orange);min-width:0}
+.pk-r .data{min-width:3.6rem;text-align:right}
+.pk-where{font-size:.8rem;color:var(--ink-soft);margin-top:.25rem;min-height:1.2em}
+.pk-foot .btns{display:flex;justify-content:flex-end;gap:.4rem;margin-top:.5rem}
+
+/* ---- settings sheet ---- */
+dialog{
+  margin:auto;                       /* the reset above zeroes it, which pins dialogs top left */
+  border:1px solid var(--ink-soft);border-radius:4px;background:var(--card);color:var(--ink);
+  max-width:24rem;width:calc(100% - 2rem);padding:1rem;box-shadow:0 20px 50px -20px var(--shadow)
+}
+dialog::backdrop{background:rgba(10,12,8,.55)}
+dialog h3{font-size:1.1rem;margin-bottom:.5rem}
+dialog p{font-size:.84rem;color:var(--ink-soft);margin:.5rem 0}
+dialog .btns{display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.7rem}
+dialog button{font:inherit;font-size:.84rem;background:var(--paper-2);color:var(--ink);border:1px solid var(--rule);border-radius:3px;padding:.35rem .7rem;cursor:pointer}
+dialog button.primary{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+dialog .warn{color:var(--orange)}
+.kv{display:flex;justify-content:space-between;font-size:.82rem;padding:.2rem 0;border-bottom:1px dotted var(--rule)}
+
+@media (max-width:380px){.mark span{display:none}}
+@media (max-height:640px){.body h2{font-size:1.25rem}.acts{padding:.5rem 0 .6rem}.hint{display:none}}
+@media (prefers-reduced-motion:reduce){*{transition-duration:.01ms !important;animation-duration:.01ms !important}}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="mark">
+      <h1 class="display">Wild<em>Find</em></h1>
+      <span id="count">—</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:.5rem">
+      <nav role="tablist">
+        <button role="tab" id="t-swipe" aria-selected="true">Swipe</button>
+        <button role="tab" id="t-saved" aria-selected="false">Saved</button>
+      </nav>
+      <button class="icon" id="gear" title="Settings, backup and hidden sites" aria-label="Settings">≡</button>
+    </div>
+  </header>
+
+  <div class="margin">
+    <div class="row">
+      <label for="place">Near</label>
+      <div class="field">
+        <input type="text" id="place" autocomplete="off" spellcheck="false" placeholder="Town, or paste 53.38,-1.47 (empty = anywhere)">
+        <div class="ac" id="ac" hidden></div>
+      </div>
+      <button type="button" class="icon" id="pickArea" title="Choose the area on a map" aria-label="Choose the area on a map">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><path d="M12 1v5M12 18v5M1 12h5M18 12h5"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/></svg>
+      </button>
+      <select id="radius" aria-label="Distance from that place">
+        <option value="10">10 mi</option>
+        <option value="25" selected>25 mi</option>
+        <option value="50">50 mi</option>
+        <option value="100">100 mi</option>
+        <option value="250">250 mi</option>
+        <option value="99999">Anywhere</option>
+      </select>
+    </div>
+    <div class="row">
+      <div class="kinds" id="kinds"></div>
+    </div>
+  </div>
+
+  <section class="panel" data-on="1" id="p-swipe">
+    <div class="stage" id="stage"></div>
+    <div class="acts">
+      <button class="act drop" id="b-drop" aria-label="Hide this one for good">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+      <button class="act keep" id="b-keep" aria-label="Save to your list">
+        <svg viewBox="0 0 24 24"><path d="M12 20s-7-4.6-7-9.4A4 4 0 0 1 12 8a4 4 0 0 1 7 2.6C19 15.4 12 20 12 20z"/></svg>
+      </button>
+    </div>
+    <p class="hint">Drag sideways to decide. Swipe up on the picture for more.</p>
+  </section>
+
+  <section class="panel" id="p-saved">
+    <div class="viewbar">
+      <div class="seg" aria-label="Show saved places as">
+        <button type="button" id="v-list" aria-pressed="true">List</button>
+        <button type="button" id="v-map" aria-pressed="false">Map</button>
+      </div>
+    </div>
+    <div class="list" id="savedList"></div>
+    <div class="mapbox" id="mapBox" hidden>
+      <canvas id="mapCanvas" aria-label="Map of your saved places"></canvas>
+      <div class="mapctl">
+        <button type="button" id="m-in" aria-label="Zoom in">+</button>
+        <button type="button" id="m-out" aria-label="Zoom out">&minus;</button>
+        <button type="button" id="m-fit" title="Show all saved places" aria-label="Show all saved places">&#x2922;</button>
+      </div>
+      <div class="mapnote" id="mapNote" hidden></div>
+      <div class="mappop" id="mapPop" hidden></div>
+    </div>
+  </section>
+</div>
+
+<dialog id="picker" class="picker" aria-label="Choose an area on the map">
+  <div class="pk-head">
+    <h3 class="display">Choose an area</h3>
+    <span>Drag the map until the middle sits on the spot. Scroll or pinch to zoom.</span>
+  </div>
+  <div class="mapbox pk-map" id="pkBox">
+    <canvas id="pkCanvas" aria-label="Map for choosing the area"></canvas>
+    <div class="mapctl">
+      <button type="button" id="pk-in" aria-label="Zoom in">+</button>
+      <button type="button" id="pk-out" aria-label="Zoom out">&minus;</button>
+    </div>
+  </div>
+  <div class="pk-foot">
+    <div class="pk-r">
+      <label for="pkR">Radius</label>
+      <input type="range" id="pkR" min="1" max="100" step="1" value="25">
+      <span class="data" id="pkRv">25 mi</span>
+    </div>
+    <div class="pk-where" id="pkWhere"></div>
+    <div class="btns">
+      <button type="button" id="pk-cancel">Cancel</button>
+      <button type="button" class="primary" id="pk-use">Use this area</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="sheet">
+  <h3 class="display">Settings</h3>
+  <div class="kv"><span>Sites loaded</span><span class="data" id="s-total">0</span></div>
+  <div class="kv"><span>Places you can search</span><span class="data" id="s-places">0</span></div>
+  <div class="kv"><span>Sites with photographs</span><span class="data" id="s-photos">0</span></div>
+  <div class="kv"><span>Saved</span><span class="data" id="s-saved">0</span></div>
+  <div class="kv"><span>Hidden for good</span><span class="data" id="s-hidden">0</span></div>
+
+  <p>Your saves, ticks and notes live in this browser only. Back them up before clearing browsing data, or to move them to another machine.</p>
+  <div class="btns">
+    <button id="b-export">Save a backup file</button>
+    <button id="b-import">Load a backup file</button>
+    <input type="file" id="importFile" accept="application/json" hidden>
+  </div>
+
+  <p>Order of the deck</p>
+  <div class="btns">
+    <button id="b-order">Nearest first</button>
+    <button id="b-theme">Switch to dark</button>
+  </div>
+
+  <p class="warn" id="hiddenLine">Nothing hidden yet.</p>
+  <div class="btns">
+    <button id="b-unhide">Bring back everything I hid</button>
+    <button class="primary" id="b-close">Done</button>
+  </div>
+</dialog>
+
+<script src="data/locations.js"></script>
+<script src="data/places.js"></script>
+<script src="data/photos.js"></script>
+<script src="data/map.js"></script>
+<script>
+"use strict";
+/* ================================================================
+   Data. Each data/*.js file assigns a global and is optional, so the
+   page still opens if one is missing or has not been fetched yet.
+   ================================================================ */
+/* The data files store rows as plain arrays. At thirty five thousand sites the
+   repeated key names of an object-per-row format would be several megabytes on
+   their own, so rows are unpacked here once at startup instead. */
+const KIND_KEYS = Array.isArray(window.WF_KINDS) ? window.WF_KINDS
+  : ["mine","industrial","military","railway","religious","castle","agrarian","folly","ruins"];
+
+const SITES = (Array.isArray(window.WF_LOCATIONS) ? window.WF_LOCATIONS : []).map(r =>
+  Array.isArray(r) ? { i:r[0], n:r[1], la:r[2], lo:r[3], c:KIND_KEYS[r[4]]||"ruins", d:r[5]||"" } : r
+);
+
+const PLACES = (Array.isArray(window.WF_PLACES) ? window.WF_PLACES : []).map(r =>
+  Array.isArray(r) ? { n:r[0], la:r[1], lo:r[2], p:["city","town","village"][r[3]]||"village" } : r
+);
+
+/* Photographs live at photos/<last two of id>/<id>/<n>.jpg, so only the file
+   number and two small indexes need storing per picture. */
+const PHOTOS = (function(){
+  const raw = window.WF_PHOTOS;
+  if (!raw || typeof raw !== "object") return {};
+  const au = window.WF_AUTHORS || [], li = window.WF_LICENCES || [];
+  const out = {};
+  for (const id in raw) {
+    const list = raw[id];
+    if (!Array.isArray(list)) continue;
+    out[id] = list.map(e => Array.isArray(e)
+      ? { f:"photos/"+id.slice(-2)+"/"+id+"/"+e[0]+".jpg", by:au[e[1]]||"", lic:li[e[2]]||"" }
+      : e);
+  }
+  return out;
+})();
+
+/* key, the label on the filter chip, and the singular used in a sketch caption */
+const KINDS = [
+  ["mine","mines & quarries","mine"], ["industrial","works & mills","mill"],
+  ["military","military","bunker"],   ["railway","railway","viaduct"],
+  ["religious","churches","church"],  ["castle","castles & towers","castle"],
+  ["agrarian","farm & croft","farm building"], ["folly","follies","folly"],
+  ["ruins","other ruins","ruin"]
+];
+
+/* ================================================================
+   Stored state
+   ================================================================ */
+const KEY = "wildfind.v1";
+const blank = () => ({
+  loc:null, radius:25, kinds:KINDS.map(k=>k[0]),
+  saved:[], hidden:[], visited:{}, notes:{}, order:"near", theme:"light", savedView:"list"
+});
+let S = blank();
+try{
+  const raw = localStorage.getItem(KEY);
+  if(raw) S = Object.assign(blank(), JSON.parse(raw));
+}catch(e){ /* private window, or storage blocked — carry on in memory */ }
+const save = () => { try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){} };
+
+const hiddenSet = new Set(S.hidden);
+const savedSet  = new Set(S.saved);
+
+/* ================================================================
+   Geography
+   ================================================================ */
+const R_EARTH_MI = 3958.7613;
+const rad = d => d*Math.PI/180, deg = r => r*180/Math.PI;
+
+function distMi(a,b,c,d){
+  const dLa=rad(c-a), dLo=rad(d-b);
+  const h = Math.sin(dLa/2)**2 + Math.cos(rad(a))*Math.cos(rad(c))*Math.sin(dLo/2)**2;
+  return 2*R_EARTH_MI*Math.asin(Math.min(1,Math.sqrt(h)));
+}
+function bearing(a,b,c,d){
+  const y = Math.sin(rad(d-b))*Math.cos(rad(c));
+  const x = Math.cos(rad(a))*Math.sin(rad(c)) - Math.sin(rad(a))*Math.cos(rad(c))*Math.cos(rad(d-b));
+  return (deg(Math.atan2(y,x))+360)%360;
+}
+const COMPASS = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+const compass = brg => COMPASS[Math.round(brg/22.5)%16];
+
+/* WGS84 -> OSGB36 -> National Grid reference, in three testable steps.
+   Checked against the Ordnance Survey's own published test point
+   (Caister water tower) and against Greenwich and Ben Nevis. */
+
+/* 1. Helmert datum shift. Measured against the OS test point it lands within
+      about 3 m, since the exact method (OSTN15) is a lookup grid and this is
+      the published approximation. Fine for walking onto a site. */
+function wgs84ToOsgb36(lat, lon){
+  const a0=6378137, f=1/298.257223563, e2w=2*f-f*f;
+  const phi=rad(lat), lam=rad(lon);
+  const nu=a0/Math.sqrt(1-e2w*Math.sin(phi)**2);
+  const x=nu*Math.cos(phi)*Math.cos(lam),
+        y=nu*Math.cos(phi)*Math.sin(lam),
+        z=nu*(1-e2w)*Math.sin(phi);
+  const tx=-446.448, ty=125.157, tz=-542.060, s=20.4894e-6,
+        rx=rad(-0.1502/3600), ry=rad(-0.2470/3600), rz=rad(-0.8421/3600);
+  const x2=tx + x*(1+s) - y*rz + z*ry,
+        y2=ty + x*rz + y*(1+s) - z*rx,
+        z2=tz - x*ry + y*rx + z*(1+s);
+  const a=6377563.396, b=6356256.909, e2=(a*a-b*b)/(a*a);
+  const p=Math.sqrt(x2*x2+y2*y2);
+  let phi2=Math.atan2(z2,p);
+  for(let i=0;i<20;i++){
+    const nu2=a/Math.sqrt(1-e2*Math.sin(phi2)**2);
+    phi2=Math.atan2(z2 + e2*nu2*Math.sin(phi2), p);
+  }
+  return { lat: deg(phi2), lon: deg(Math.atan2(y2,x2)) };
+}
+
+/* 2. Transverse Mercator on the Airy 1830 ellipsoid. Input is OSGB36. */
+function osgb36ToEN(lat, lon){
+  const a=6377563.396, b=6356256.909, e2=(a*a-b*b)/(a*a);
+  const F0=0.9996012717, phi0=rad(49), lam0=rad(-2), E0=400000, N0=-100000;
+  const phi=rad(lat), lam=rad(lon), n=(a-b)/(a+b);
+  const cp=Math.cos(phi), sp=Math.sin(phi), tp=Math.tan(phi);
+  const nu=a*F0/Math.sqrt(1-e2*sp*sp);
+  const rho=a*F0*(1-e2)/Math.pow(1-e2*sp*sp,1.5), eta2=nu/rho-1;
+  const dP=phi-phi0, sP=phi+phi0;
+  const M=b*F0*(
+      (1+n+1.25*n*n+1.25*n*n*n)*dP
+    - (3*n+3*n*n+2.625*n*n*n)*Math.sin(dP)*Math.cos(sP)
+    + (1.875*n*n+1.875*n*n*n)*Math.sin(2*dP)*Math.cos(2*sP)
+    - (35/24)*n*n*n*Math.sin(3*dP)*Math.cos(3*sP));
+  const I=M+N0, II=nu/2*sp*cp, III=nu/24*sp*cp**3*(5-tp*tp+9*eta2),
+        IIIA=nu/720*sp*cp**5*(61-58*tp*tp+tp**4),
+        IV=nu*cp, V=nu/6*cp**3*(nu/rho-tp*tp),
+        VI=nu/120*cp**5*(5-18*tp*tp+tp**4+14*eta2-58*tp*tp*eta2);
+  const dL=lam-lam0;
+  return {
+    E: E0+IV*dL+V*dL**3+VI*dL**5,
+    N: I+II*dL**2+III*dL**4+IIIA*dL**6
+  };
+}
+
+/* 3. Eastings and northings to letters plus five figures each.
+      The letter pair indexes a 5x5 grid of 500 km squares and then a 5x5
+      grid of 100 km squares, skipping the letter I. */
+function enToGridRef(E, N){
+  if(!isFinite(E)||!isFinite(N)) return null;
+  if(E<0||E>=700000||N<0||N>=1300000) return null;
+  const e100=Math.floor(E/100000), n100=Math.floor(N/100000);
+  const l1=(19-n100) - (19-n100)%5 + Math.floor((e100+10)/5);
+  const l2=(19-n100)*5%25 + e100%5;
+  if(l1<0||l1>24||l2<0||l2>24) return null;
+  const A=65;
+  const c1=String.fromCharCode(l1 + (l1>7?1:0) + A);
+  const c2=String.fromCharCode(l2 + (l2>7?1:0) + A);
+  const pad=v=>String(Math.floor(v)%100000).padStart(5,"0");
+  return c1+c2+" "+pad(E)+" "+pad(N);
+}
+
+function osGridRef(lat, lon){
+  const g=wgs84ToOsgb36(lat,lon);
+  const en=osgb36ToEN(g.lat,g.lon);
+  return enToGridRef(en.E,en.N);
+}
+
+/* ================================================================
+   Pictures. Real photographs first; then two drawn panels that are
+   generated here from the site's own numbers, so there is always
+   something to look through and nothing is invented.
+   ================================================================ */
+const esc = s => String(s==null?"":s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const hash = s => { let h=2166136261; for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);} return h>>>0; };
+
+/* An elevation drawing of the kind of structure this is, in the manner of a
+   survey sketch: broken walls, open windows, rubble at the foot. Seeded from
+   the site's own name so each one is its own drawing and never changes.
+   It is a drawing of the type, not of this building, and the card says so. */
+function silhouette(site){
+  const h=hash(site.i+site.n);
+  const r=(n,m)=>((h>>>(n*3))&255)/255*m;          // 0..m, stable per site
+  const pick=(n,arr)=>arr[((h>>>(n*5))&255)%arr.length];
+  const G=168;                                      // horizon, in a 200x250 frame
+  const ink="var(--ink)", soft="var(--ink-soft)";
+  const S2=`stroke="${ink}" stroke-width="2.4" fill="none" stroke-linejoin="round"`;
+  const S1=`stroke="${soft}" stroke-width="1.3" fill="none"`;
+
+  // A broken wall top: a run of masonry that has lost its courses unevenly.
+  const brokenTop=(x1,x2,y,seed)=>{
+    const n=Math.max(3,Math.round((x2-x1)/13));
+    let d=`M${x1} ${y+r(seed,7)}`;
+    for(let i=1;i<=n;i++){
+      const x=x1+(x2-x1)*i/n;
+      d+=` L${x.toFixed(1)} ${(y+r(seed+i,9)-2).toFixed(1)}`;
+    }
+    return d;
+  };
+  const arch=(cx,w,top,bot)=>
+    `M${cx-w/2} ${bot} V${top+w/2} A${w/2} ${w/2} 0 0 1 ${cx+w/2} ${top+w/2} V${bot}`;
+
+  let shape="";
+  switch(site.c){
+    case "mine": { // Cornish engine house: tall stack beside a gabled house
+      const hh=44+r(1,14), st=26+r(2,16);
+      shape=`
+        <path d="M62 ${G} V${G-hh} L62 ${G-hh}" ${S2}/>
+        <path d="${brokenTop(62,116,G-hh,3)}" ${S2}/>
+        <path d="M62 ${G} V${G-hh} M116 ${G} V${G-hh}" ${S2}/>
+        <path d="${arch(78,15,G-hh+16,G)}" ${S1}/>
+        <path d="${arch(102,11,G-hh+26,G-6)}" ${S1}/>
+        <path d="M124 ${G} V${G-hh-st} h13 V${G}" ${S2}/>
+        <path d="M123 ${G-hh-st} h15" ${S2}/>
+        <path d="M124 ${G-hh-st+9} h13" ${S1}/>`;
+      break; }
+    case "industrial": { // mill block with a chimney, roof gone
+      const ch=58+r(1,26);
+      shape=`
+        <path d="M46 ${G} V${G-44}" ${S2}/><path d="M118 ${G} V${G-44}" ${S2}/>
+        <path d="${brokenTop(46,118,G-44,4)}" ${S2}/>
+        ${[0,1,2,3].map(i=>`<path d="${arch(58+i*17,9,G-30,G-8)}" ${S1}/>`).join("")}
+        <path d="M58 ${G-8} h60" ${S1}/>
+        <path d="M132 ${G} L135 ${G-ch} h9 L147 ${G}" ${S2}/>
+        <path d="M134 ${G-ch} h12" ${S2}/>`;
+      break; }
+    case "military": { // half buried bunker, embrasure, spill of earth
+      const w=84+r(1,20);
+      shape=`
+        <path d="M${100-w/2} ${G} V${G-26} h${w} V${G}" ${S2}/>
+        <path d="M${100-w/2-6} ${G-26} h${w+12}" ${S2}/>
+        <rect x="${100-18}" y="${G-21}" width="36" height="8" ${S1}/>
+        <path d="M${100-w/2} ${G-8} l-18 8 M${100+w/2} ${G-8} l18 8" ${S1}/>`;
+      break; }
+    case "religious": { // roofless nave, east window, broken tower
+      const th=52+r(1,22);
+      shape=`
+        <path d="M56 ${G} V${G-38}" ${S2}/><path d="M112 ${G} V${G-38}" ${S2}/>
+        <path d="${brokenTop(56,112,G-38,2)}" ${S2}/>
+        <path d="M84 ${G} V${G-46} L84 ${G-46}" ${S1}/>
+        <path d="M74 ${G} V${G-30} q10 -16 20 0 V${G}" ${S1}/>
+        <path d="M118 ${G} V${G-th} h22 V${G}" ${S2}/>
+        <path d="${brokenTop(118,140,G-th,5)}" ${S2}/>
+        <path d="${arch(129,10,G-th+14,G-10)}" ${S1}/>`;
+      break; }
+    case "castle": { // curtain wall with a lost corner and a drum tower
+      const t=46+r(1,20);
+      shape=`
+        <path d="M44 ${G} V${G-30}" ${S2}/>
+        <path d="${brokenTop(44,112,G-30,6)}" ${S2}/>
+        <path d="M112 ${G} V${G-30}" ${S1}/>
+        <path d="M118 ${G} V${G-t} h26 V${G}" ${S2}/>
+        <path d="M116 ${G-t} h4 v-7 h5 v7 h4 v-7 h5 v7 h4 v-7 h5 v7 h3" ${S2}/>
+        <path d="${arch(131,9,G-t+18,G-8)}" ${S1}/>
+        <path d="M60 ${G-18} h8 M78 ${G-20} h8" ${S1}/>`;
+      break; }
+    case "railway": { // viaduct, one arch fallen
+      const gone=pick(1,[1,2,3]);
+      shape=`
+        <path d="M22 ${G} V${G-30} h156 V${G}" ${S2}/>
+        <path d="M18 ${G-30} h164" ${S2}/>
+        ${[0,1,2,3].map(i=>i===gone
+          ? `<path d="M${40+i*36} ${G} v-14" ${S1}/><path d="M${64+i*36} ${G} v-18" ${S1}/>`
+          : `<path d="${arch(52+i*36,26,G-26,G)}" ${S1}/>`).join("")}`;
+      break; }
+    case "agrarian": { // stone barn, roof timbers down
+      shape=`
+        <path d="M52 ${G} V${G-26} L100 ${G-50} L148 ${G-26} V${G}" ${S2}/>
+        <path d="M60 ${G-30} L100 ${G-46} L140 ${G-30}" ${S1}/>
+        <path d="M88 ${G} V${G-22} h24 V${G}" ${S1}/>
+        <path d="M66 ${G-14} h10 M124 ${G-14} h10" ${S1}/>`;
+      break; }
+    case "folly": { // a tower going nowhere
+      const th=64+r(1,24);
+      shape=`
+        <path d="M86 ${G} L89 ${G-th} h22 L114 ${G}" ${S2}/>
+        <path d="${brokenTop(88,112,G-th,7)}" ${S2}/>
+        <path d="M86 ${G-14} h28 M87 ${G-30} h26" ${S1}/>
+        <path d="${arch(100,10,G-th+22,G-6)}" ${S1}/>`;
+      break; }
+    default: { // walls and a standing arch
+      shape=`
+        <path d="M46 ${G} V${G-30}" ${S2}/>
+        <path d="${brokenTop(46,88,G-30,2)}" ${S2}/>
+        <path d="M88 ${G} V${G-30}" ${S2}/>
+        <path d="M112 ${G} V${G-40}" ${S2}/>
+        <path d="${brokenTop(112,156,G-40,8)}" ${S2}/>
+        <path d="M156 ${G} V${G-40}" ${S2}/>
+        <path d="${arch(130,20,G-34,G)}" ${S1}/>
+        <path d="M60 ${G-16} h12" ${S1}/>`;
+    }
+  }
+
+  // distant ground, rubble at the base, a few tufts
+  const hills=`M0 ${G-12} q30 -${14+r(9,12)} 60 -2 q34 -${10+r(10,14)} 70 4 q36 ${7} 70 -7 V${G} H0 Z`;
+  const rubble=Array.from({length:9},(_,i)=>{
+    const x=24+i*19+r(11+i,10), w=3+r(12+i,4);
+    return `M${x.toFixed(1)} ${G} l${(w/2).toFixed(1)} -${(2+r(13+i,3)).toFixed(1)} l${(w/2).toFixed(1)} ${(2).toFixed(1)}`;
+  }).join(" ");
+  const tufts=Array.from({length:6},(_,i)=>{
+    const x=12+i*33+r(14+i,14);
+    return `M${x.toFixed(1)} ${G} l2 -6 M${(x+3).toFixed(1)} ${G} l0 -7 M${(x+6).toFixed(1)} ${G} l-2 -6`;
+  }).join(" ");
+
+  /* Framed so the horizon sits about three quarters down: sky, then the
+     structure filling the frame, then a shallow band of ground. */
+  return `<svg viewBox="22 31 156 190" preserveAspectRatio="xMidYMid slice" role="img"
+      aria-label="Survey sketch of a typical ${esc(site.c)} structure. Not a photograph of this site.">
+    <rect x="0" y="0" width="200" height="250" fill="var(--paper-2)"/>
+    <path d="${hills}" fill="none" stroke="var(--rule)" stroke-width="1.1"/>
+    ${shape}
+    <path d="${rubble}" stroke="${soft}" stroke-width="1.1" fill="none"/>
+    <path d="M0 ${G} h200" stroke="${ink}" stroke-width="1.6"/>
+    <path d="${tufts}" stroke="var(--moss)" stroke-width="1.1" fill="none"/>
+    <path d="${Array.from({length:24},(_,i)=>`M${i*12-10} 250 L${i*12+28} ${G}`).join(" ")}"
+          stroke="var(--rule)" stroke-width=".7" fill="none" opacity=".38"/>
+  </svg>`;
+}
+
+/* Photographs, and only photographs. A site with none falls back to a single
+   drawn sketch so the card is not blank, and that sketch says what it is. */
+function panelsFor(site){
+  const photos = PHOTOS[site.i] || [];
+  if (photos.length) return photos.map(p=>({photo:p}));
+  const kind=(KINDS.find(k=>k[0]===site.c)||["","","ruin"])[2];
+  return [{svg:silhouette(site), cap:"No photograph yet \u2014 sketch of a typical "+kind}];
+}
+
+/* ================================================================
+   Deck
+   ================================================================ */
+let deck=[], pIdx=0;
+const kindSet = () => new Set(S.kinds);
+
+/* Only sites with a real photograph go in the deck: the rest stay in the
+   data (and in Saved, if saved earlier) but are not dealt. With no
+   photographs at all, every site is dealt instead. */
+const photosOnly = () => Object.keys(PHOTOS).length > 0;
+
+function buildDeck(){
+  const ks=kindSet(), po=photosOnly();
+  deck = SITES.filter(s=>{
+    if(hiddenSet.has(s.i)||savedSet.has(s.i)) return false;
+    if(po && !PHOTOS[s.i]) return false;
+    if(!ks.has(s.c)) return false;
+    if(S.loc && S.radius<9999 && distMi(S.loc.la,S.loc.lo,s.la,s.lo)>S.radius) return false;
+    return true;
+  });
+  if(S.order==="near" && S.loc){
+    deck.forEach(s=>s._d=distMi(S.loc.la,S.loc.lo,s.la,s.lo));
+    deck.sort((a,b)=>a._d-b._d);
+  }else{
+    deck.forEach(s=>s._r=hash(s.i));
+    deck.sort((a,b)=>a._r-b._r);
+  }
+  pIdx=0;
+  renderDeck();
+  updateCounts();
+}
+
+const stage=document.getElementById("stage");
+
+function renderDeck(){
+  stage.textContent="";
+  if(!SITES.length){
+    stage.innerHTML=`<div class="empty"><strong>No site data yet</strong>
+      The app opened fine, but <span class="data">data/locations.js</span> is missing or empty.
+      Run <span class="data">tools/FETCH DATA.bat</span> once while you have internet to fill it.</div>`;
+    return;
+  }
+  if(!deck.length){
+    const where = S.loc ? `within ${S.radius<9999?S.radius+" miles of "+esc(S.loc.n):"your filters"}` : "matching those kinds";
+    stage.innerHTML=`<div class="empty"><strong>Nothing left ${where}</strong>
+      Widen the distance, turn more kinds back on, or pick another town.
+      <button id="b-wide">Search anywhere</button></div>`;
+    const w=document.getElementById("b-wide");
+    if(w) w.onclick=()=>{ S.radius=99999; document.getElementById("radius").value="99999"; save(); buildDeck(); };
+    return;
+  }
+  if(deck[1]) stage.appendChild(cardEl(deck[1],true));
+  stage.appendChild(cardEl(deck[0],false));
+}
+
+/* Most OSM features carry no name at all. An unnamed mineshaft is still a
+   real place, so describe it by what it is and where, rather than hiding it. */
+function titleOf(site, near){
+  if (site.n) return site.n;
+  const k = KINDS.find(x=>x[0]===site.c);
+  const kind = k ? k[2].charAt(0).toUpperCase()+k[2].slice(1) : "Ruin";
+  return near ? kind+" near "+near : kind;
+}
+
+function cardEl(site,isBack){
+  const el=document.createElement("div");
+  el.className="card"+(isBack?" back":"");
+  if(isBack){
+    const bp=nearestPlace(site);
+    el.innerHTML=`<div class="frame"></div><div class="body"><h2 class="display">${esc(titleOf(site, bp&&bp.d<12?bp.name:null))}</h2></div>`;
+    return el;
+  }
+  const panels=panelsFor(site);
+  const idx=Math.min(pIdx,panels.length-1);
+  const p=panels[idx];
+  const d = S.loc ? distMi(S.loc.la,S.loc.lo,site.la,site.lo) : null;
+  const brg = S.loc ? compass(bearing(S.loc.la,S.loc.lo,site.la,site.lo)) : "";
+  const ref = osGridRef(site.la,site.lo);
+  const kindLabel=(KINDS.find(k=>k[0]===site.c)||["","ruin"])[1];
+  /* Plenty of OSM names are bare ("Adit", "The Battery"), so anchor them to
+     the nearest settlement when there is one close enough to mean anything. */
+  const np = nearestPlace(site);
+  const near = (np && np.d < 12) ? np.name : null;
+
+  const title = titleOf(site, near);
+  const many = panels.length>1;
+
+  el.innerHTML=`
+    <div class="frame${p.photo?"":" drawn"}" id="frame">
+      ${p.photo
+        ? `<img src="${esc(p.photo.f)}" alt="${esc(title)}" loading="eager" data-broken="0" draggable="false">`
+        : p.svg + (p.cap ? `<div class="credit drawn">${esc(p.cap)}</div>` : "")}
+      ${many?`<div class="pips">${panels.map((_,i)=>`<i ${i===idx?'data-on="1"':""}></i>`).join("")}</div>`:""}
+      ${many?`<button class="edge l" id="eL" aria-label="Previous picture">\u2039</button>
+      <button class="edge r" id="eR" aria-label="Next picture">\u203a</button>`:""}
+    </div>
+    <div class="stamp keep display">Saved</div>
+    <div class="stamp drop display">Hidden</div>
+    <div class="body">
+      <h2 class="display">${esc(title)}</h2>
+      <div class="meta">
+        <span>${esc(kindLabel)}${near?", near "+esc(near):""}</span>
+        ${d!=null?`<span class="away data">${d<10?d.toFixed(1):Math.round(d)} mi ${brg}</span>`:""}
+      </div>
+      ${ref?`<div class="gridref data">${esc(ref)}</div>`:""}
+      ${site.d?`<p class="desc">${esc(site.d)}</p>`:""}
+      ${p.photo?`<div class="photo-by" title="${esc((p.photo.by||"Unknown")+" — "+(p.photo.lic||"see ATTRIBUTION.txt"))}">Photo: ${esc(p.photo.by||"Unknown")} &mdash; ${esc(p.photo.lic||"see ATTRIBUTION.txt")}</div>`:""}
+    </div>`;
+
+  /* A download can fail part way through a fetch, leaving the manifest
+     pointing at a file that is not there. Drop it and move on rather than
+     showing a broken image. */
+  const im=el.querySelector(".frame img");
+  if(im) im.addEventListener("error",()=>{
+    const list=PHOTOS[site.i];
+    if(list){
+      const gone=list[idx];
+      PHOTOS[site.i]=list.filter(x=>x!==gone);
+      if(!PHOTOS[site.i].length) delete PHOTOS[site.i];
+    }
+    pIdx=0;
+    renderDeck();
+  },{once:true});
+
+  const bL=el.querySelector("#eL"), bR=el.querySelector("#eR");
+  if(bL) bL.onclick=e=>{e.stopPropagation();stepPhoto(-1);};
+  if(bR) bR.onclick=e=>{e.stopPropagation();stepPhoto(1);};
+  attachGestures(el,site,panels.length);
+  return el;
+}
+
+function stepPhoto(dir){
+  const site=deck[0]; if(!site) return;
+  const n=panelsFor(site).length;
+  pIdx=(pIdx+dir+n)%n;
+  renderDeck();
+}
+
+/* Axis lock: whichever direction moves 12px first wins. Sideways is a
+   decision about the site; up and down flicks through its pictures. */
+function attachGestures(el,site,nPanels){
+  let x0=0,y0=0,axis=null,active=false,onPhoto=false;
+  const keep=el.querySelector(".stamp.keep"), drop=el.querySelector(".stamp.drop");
+  const reset=()=>{ el.style.transition="transform .22s ease"; el.style.transform="";
+                    keep.style.opacity=0; drop.style.opacity=0;
+                    setTimeout(()=>el.style.transition="",220); };
+
+  el.addEventListener("pointerdown",e=>{
+    if(e.target.closest(".edge")) return;
+    active=true; axis=null; x0=e.clientX; y0=e.clientY;
+    /* noted now: once the card captures the pointer, pointerup's target is
+       the card itself, never the picture inside it */
+    onPhoto=!!e.target.closest(".frame");
+    el.setPointerCapture(e.pointerId); el.style.transition="";
+  });
+  el.addEventListener("pointermove",e=>{
+    if(!active) return;
+    const dx=e.clientX-x0, dy=e.clientY-y0;
+    if(!axis){
+      if(Math.abs(dx)>12) axis="x";
+      else if(Math.abs(dy)>12) axis="y";
+      else return;
+    }
+    if(axis==="x"){
+      el.style.transform=`translateX(${dx}px) rotate(${dx*0.035}deg)`;
+      keep.style.opacity=Math.max(0,Math.min(1,dx/90));
+      drop.style.opacity=Math.max(0,Math.min(1,-dx/90));
+    }
+  });
+  el.addEventListener("pointerup",e=>{
+    if(!active) return; active=false;
+    const dx=e.clientX-x0, dy=e.clientY-y0;
+    if(axis==="x"){
+      if(dx>95) return commit(site,"keep",el);
+      if(dx<-95) return commit(site,"drop",el);
+      reset();
+    }else if(axis==="y" && nPanels>1 && Math.abs(dy)>35){
+      stepPhoto(dy>0?1:-1);
+    }else if(axis===null){
+      /* a tap in the middle of the picture moves on by one */
+      if(onPhoto && nPanels>1) stepPhoto(1);
+    }
+  });
+  el.addEventListener("pointercancel",()=>{ active=false; reset(); });
+  el.addEventListener("dragstart",e=>e.preventDefault());
+}
+
+function commit(site,how,el){
+  if(el){
+    el.style.transition="transform .3s ease, opacity .3s ease";
+    el.style.transform=`translateX(${how==="keep"?"120%":"-120%"}) rotate(${how==="keep"?14:-14}deg)`;
+    el.style.opacity="0";
+  }
+  if(how==="keep"){ savedSet.add(site.i); S.saved.push(site.i); }
+  else{ hiddenSet.add(site.i); S.hidden.push(site.i); }
+  save();
+  deck.shift(); pIdx=0;
+  setTimeout(()=>{ renderDeck(); updateCounts(); renderSaved(); }, el?170:0);
+}
+
+document.getElementById("b-keep").onclick=()=>{ if(deck[0]) commit(deck[0],"keep",stage.querySelector(".card:last-child")); };
+document.getElementById("b-drop").onclick=()=>{ if(deck[0]) commit(deck[0],"drop",stage.querySelector(".card:last-child")); };
+
+document.addEventListener("keydown",e=>{
+  if(e.target.matches("input,textarea,select")) return;
+  if(document.querySelector("dialog[open]")) return;
+  if(document.getElementById("p-swipe").getAttribute("data-on")!=="1") return;   // not from Saved
+  if(e.key==="ArrowRight"&&deck[0]){ e.preventDefault(); commit(deck[0],"keep",stage.querySelector(".card:last-child")); }
+  if(e.key==="ArrowLeft"&&deck[0]){ e.preventDefault(); commit(deck[0],"drop",stage.querySelector(".card:last-child")); }
+  if(e.key==="ArrowDown"){ e.preventDefault(); stepPhoto(1); }
+  if(e.key==="ArrowUp"){ e.preventDefault(); stepPhoto(-1); }
+});
+
+/* ================================================================
+   Saved list
+   ================================================================ */
+const savedList=document.getElementById("savedList");
+
+/* Every unnamed site is titled by its nearest town, so this runs on every
+   card. Scanning all 45,000 places each time would be wasteful, so they are
+   bucketed into fifth-of-a-degree cells and only the neighbours are checked. */
+const PLACE_GRID = (function(){
+  const g = new Map();
+  for (const p of PLACES){
+    const k = Math.round(p.la*5) + ":" + Math.round(p.lo*5);
+    let b = g.get(k); if(!b){ b=[]; g.set(k,b); }
+    b.push(p);
+  }
+  return g;
+})();
+const placeCache = new Map();
+
+function nearestPlace(s){
+  if(!PLACES.length) return null;
+  const ck = s.i;
+  if (placeCache.has(ck)) return placeCache.get(ck);
+  const la=Math.round(s.la*5), lo=Math.round(s.lo*5);
+  let best=null, bd=1e9;
+  for (let ring=1; ring<=4 && !best; ring++){
+    for (let dla=-ring; dla<=ring; dla++){
+      for (let dlo=-ring; dlo<=ring; dlo++){
+        if (ring>1 && Math.abs(dla)<ring && Math.abs(dlo)<ring) continue; // only the new edge
+        const b = PLACE_GRID.get((la+dla)+":"+(lo+dlo));
+        if(!b) continue;
+        for (const p of b){
+          const d=distMi(s.la,s.lo,p.la,p.lo);
+          if(d<bd){ bd=d; best=p; }
+        }
+      }
+    }
+  }
+  const r = best ? {name:best.n, d:bd} : null;
+  placeCache.set(ck, r);
+  return r;
+}
+
+function renderSaved(){
+  if(S.savedView==="map") savedMap.refresh();
+  const items=S.saved.map(id=>SITES.find(s=>s.i===id)).filter(Boolean);
+  if(!items.length){
+    savedList.innerHTML=`<div class="empty"><strong>Your list is empty</strong>
+      Swipe right on anything you fancy and it lands here. Tick it off once you have been.</div>`;
+    return;
+  }
+  const groups=new Map();
+  for(const s of items){
+    const np=nearestPlace(s);
+    const g=np?`near ${np.name}`:"ungrouped";
+    if(!groups.has(g)) groups.set(g,[]);
+    groups.get(g).push(s);
+  }
+  const frag=document.createDocumentFragment();
+  [...groups.entries()].sort((a,b)=>b[1].length-a[1].length).forEach(([g,list])=>{
+    const h=document.createElement("div");
+    h.className="group";
+    h.textContent=`${g} (${list.length})`;
+    frag.appendChild(h);
+    list.sort((a,b)=>a.n.localeCompare(b.n)).forEach(s=>frag.appendChild(savedItem(s)));
+  });
+  savedList.textContent="";
+  savedList.appendChild(frag);
+}
+
+function savedItem(s){
+  const done=!!S.visited[s.i];
+  const d=S.loc?distMi(S.loc.la,S.loc.lo,s.la,s.lo):null;
+  const ref=osGridRef(s.la,s.lo);
+  const el=document.createElement("div");
+  el.className="item"+(done?" done":"");
+  el.innerHTML=`
+    <button class="tick" role="checkbox" aria-checked="${done}" aria-label="Mark ${esc(s.n)} as visited">
+      <svg viewBox="0 0 24 24"><path d="M5 13l5 5L19 7"/></svg>
+    </button>
+    <div class="txt">
+      <div class="nm">${esc(s.n)}</div>
+      <div class="sub">
+        <span class="data">${esc(ref||s.la.toFixed(4)+", "+s.lo.toFixed(4))}</span>
+        ${d!=null?`<span class="data">${d<10?d.toFixed(1):Math.round(d)} mi</span>`:""}
+      </div>
+      <input class="note" placeholder="Notes — access, who is coming, what to bring" value="${esc(S.notes[s.i]||"")}">
+    </div>
+    <button class="drop-x" aria-label="Remove ${esc(s.n)} from the list">×</button>`;
+  el.querySelector(".tick").onclick=()=>{
+    if(S.visited[s.i]) delete S.visited[s.i]; else S.visited[s.i]=Date.now();
+    save(); renderSaved();
+  };
+  el.querySelector(".note").oninput=e=>{ S.notes[s.i]=e.target.value; save(); };
+  el.querySelector(".drop-x").onclick=()=>{
+    S.saved=S.saved.filter(x=>x!==s.i); savedSet.delete(s.i);
+    delete S.visited[s.i]; delete S.notes[s.i];
+    save(); renderSaved(); buildDeck();
+  };
+  return el;
+}
+
+/* ================================================================
+   Saved map. An outline of the British Isles on the National Grid,
+   drawn on a canvas with the saved sites pinned on it. No map tiles,
+   so it works offline: the coast comes from data/map.js (Natural
+   Earth), towns from data/places.js. Drag to move, wheel or pinch to
+   zoom, double click to zoom in, click a pin for its details.
+   ================================================================ */
+/* One map, used twice: o.pins draws the saved sites (the Saved tab);
+   o.overlay draws anything else on top (the area picker's circle). */
+function makeMap(o){
+  const box=o.box, cv=o.cv, pop=o.pop||{hidden:true}, note=o.note;
+  const ctx=cv.getContext("2d");
+  const toEN=(la,lo)=>{ const g=wgs84ToOsgb36(la,lo); return osgb36ToEN(g.lat,g.lon); };
+  const DATA={x0:-320000,x1:1000000,y0:-220000,y1:1320000};  // what data/map.js covers
+  const VIEW={x0:-150000,x1:800000,y0:-50000,y1:1250000};    // where the view centre may go
+  const S_MAX=0.4;                                               // px per metre: about 1 km across
+
+  // The coast as paths in grid metres: the UK, Ireland, and the Continent
+  // (which is cut off at the edge of the data, so it is only outlined).
+  const coast=(function(){
+    const raw=window.WF_MAP;
+    if(!raw||!Array.isArray(raw.rings)) return null;
+    const u=raw.unit||100, home=new Path2D(), away=new Path2D(), cont=new Path2D();
+    for(const [h,e] of raw.rings){
+      const p=h===0?home:h===1?away:cont;
+      let x=0,y=0;
+      for(let i=0;i<e.length;i+=2){
+        x+=e[i]; y+=e[i+1];
+        if(i) p.lineTo(x*u,y*u); else p.moveTo(x*u,y*u);
+      }
+      p.closePath();
+    }
+    return {home,away,cont};
+  })();
+
+  let places=null;                  // projected once, the first time the map shows
+  const enOf=s=>s._en||(s._en=toEN(s.la,s.lo));
+  let W=0,H=0,dpr=1, cx=350000, cy=560000, sc=0, sel=null, fittedFor=null, queued=false;
+
+  const sMin=()=>Math.min(W/1100000, H/1450000);          // all of the British Isles
+  const clampView=()=>{
+    sc=Math.max(sMin(),Math.min(S_MAX,sc));
+    cx=Math.max(VIEW.x0,Math.min(VIEW.x1,cx));
+    cy=Math.max(VIEW.y0,Math.min(VIEW.y1,cy));
+  };
+  const sx=E=>(E-cx)*sc+W/2, sy=N=>H/2-(N-cy)*sc;
+  const byId=new Map(SITES.map(s=>[s.i,s]));         // redrawn every frame while dragging
+  const savedSites=()=>o.pins?S.saved.map(id=>byId.get(id)).filter(Boolean):[];
+
+  function size(){
+    const r=box.getBoundingClientRect();
+    if(!r.width||!r.height) return false;
+    dpr=window.devicePixelRatio||1;
+    W=r.width; H=r.height;
+    cv.width=Math.round(W*dpr); cv.height=Math.round(H*dpr);
+    return true;
+  }
+
+  function fit(){
+    const pins=savedSites().map(enOf);
+    let x0,x1,y0,y1;
+    if(pins.length){
+      x0=Math.min(...pins.map(p=>p.E)); x1=Math.max(...pins.map(p=>p.E));
+      y0=Math.min(...pins.map(p=>p.N)); y1=Math.max(...pins.map(p=>p.N));
+      const pad=25000;              // a lone pin still shows its surroundings
+      x0-=pad; x1+=pad; y0-=pad; y1+=pad;
+    } else { x0=0; x1=700000; y0=0; y1=1220000; }    // Great Britain
+    cx=(x0+x1)/2; cy=(y0+y1)/2;
+    sc=Math.min((W-60)/(x1-x0), (H-60)/(y1-y0));
+    clampView(); draw();
+  }
+
+  function zoomAt(px,py,f){
+    const E=cx+(px-W/2)/sc, N=cy-(py-H/2)/sc;
+    sc*=f; clampView();
+    cx=E-(px-W/2)/sc; cy=N+(py-H/2)/sc;
+    clampView(); draw();
+  }
+
+  function draw(){
+    if(queued) return;
+    queued=true;
+    requestAnimationFrame(()=>{ queued=false; paint(); });
+  }
+
+  function paint(){
+    if(box.hidden||!W||!box.offsetParent) return;
+    const cs=getComputedStyle(document.documentElement), col=n=>cs.getPropertyValue(n).trim();
+    const C={sea:col("--sea"),land:col("--land"),coast:col("--ink-faint"),grid:col("--rule"),
+             ink:col("--ink"),soft:col("--ink-soft"),faint:col("--ink-faint"),pin:col("--orange"),blue:col("--blue")};
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.fillStyle=C.sea; ctx.fillRect(0,0,W,H);
+
+    // coast: paths are in metres, so draw them through the view transform
+    if(coast){
+      ctx.setTransform(sc*dpr,0,0,-sc*dpr,(W/2-cx*sc)*dpr,(H/2+cy*sc)*dpr);
+      // the Continent is cut off at the edge of the data: hide that cut
+      const m=3/sc;
+      ctx.save(); ctx.beginPath();
+      ctx.rect(DATA.x0+m,DATA.y0+m,DATA.x1-DATA.x0-2*m,DATA.y1-DATA.y0-2*m); ctx.clip();
+      ctx.lineWidth=1/sc; ctx.lineJoin="round";
+      ctx.fillStyle=C.land;
+      ctx.globalAlpha=.45; ctx.fill(coast.away); ctx.globalAlpha=1;
+      ctx.fill(coast.home);
+      ctx.strokeStyle=C.coast; ctx.globalAlpha=.75;
+      ctx.stroke(coast.cont); ctx.stroke(coast.away); ctx.stroke(coast.home);
+      ctx.globalAlpha=1;
+      ctx.restore();
+      // and fade the Continent's coastline out before it reaches that cut
+      // (C.sea is a #rrggbb colour, so "00" on the end makes it transparent)
+      const BIG=1e7, F=90000;
+      let g=ctx.createLinearGradient(DATA.x1-F,0,DATA.x1,0);
+      g.addColorStop(0,C.sea+"00"); g.addColorStop(1,C.sea);
+      ctx.fillStyle=g; ctx.fillRect(DATA.x1-F,-BIG,F+BIG,2*BIG);            // east
+      g=ctx.createLinearGradient(0,DATA.y0+F,0,DATA.y0);
+      g.addColorStop(0,C.sea+"00"); g.addColorStop(1,C.sea);
+      ctx.fillStyle=g; ctx.fillRect(-BIG,DATA.y0-BIG,2*BIG,F+BIG);           // south
+      ctx.setTransform(dpr,0,0,dpr,0,0);
+    }
+
+    // National Grid lines, finer as you zoom in: 100 km, then 10 km, then 1 km
+    const kmPx=sc*1000;
+    const step = kmPx>=40 ? 1000 : kmPx>=4 ? 10000 : 100000;
+    const E0=cx-W/2/sc, E1=cx+W/2/sc, N0=cy-H/2/sc, N1=cy+H/2/sc;
+    const lines=(st,alpha)=>{
+      ctx.strokeStyle=C.grid; ctx.globalAlpha=alpha; ctx.lineWidth=1;
+      ctx.beginPath();
+      for(let e=Math.ceil(E0/st)*st; e<=E1; e+=st){ const x=Math.round(sx(e))+.5; ctx.moveTo(x,0); ctx.lineTo(x,H); }
+      for(let n=Math.ceil(N0/st)*st; n<=N1; n+=st){ const y=Math.round(sy(n))+.5; ctx.moveTo(0,y); ctx.lineTo(W,y); }
+      ctx.stroke();
+    };
+    if(step<100000) lines(step,.3);
+    lines(100000,.55);
+    ctx.globalAlpha=1;
+    // the two letters of each 100 km square, as on an OS map
+    if(kmPx*100>=90){
+      ctx.font="600 11px Consolas,ui-monospace,monospace"; ctx.fillStyle=C.faint; ctx.globalAlpha=.8;
+      ctx.textAlign="left"; ctx.textBaseline="bottom";
+      for(let e=Math.floor(E0/1e5)*1e5; e<=E1; e+=1e5)
+        for(let n=Math.floor(N0/1e5)*1e5; n<=N1; n+=1e5){
+          const g=enToGridRef(e+1,n+1);
+          if(g) ctx.fillText(g.slice(0,2), sx(e)+4, sy(n)-3);
+        }
+      ctx.globalAlpha=1;
+    }
+
+    const taken=[];                  // label boxes already placed, to avoid overlaps
+    const free=(x,y,w,h)=>{
+      for(const b of taken) if(x<b[0]+b[2]&&x+w>b[0]&&y<b[1]+b[3]&&y+h>b[1]) return false;
+      return true;
+    };
+    const inView=(x,y,m)=>x>-m&&x<W+m&&y>-m&&y<H+m;
+    const miPx=sc*1609.344;
+    const mi=[0.25,0.5,1,2,5,10,20,50,100,200].find(v=>v*miPx>=60)||200;
+    const lift=pop.hidden?0:pop.offsetHeight+8;          // keep clear of the details card
+    const bar={mi, len:mi*miPx, x:12, y:H-14-lift};
+    taken.push([bar.x-4,bar.y-18,bar.len+8,22]);
+    taken.push([W-48,0,48,130]);                         // the zoom buttons
+
+    // saved pins: positions first, so town names keep clear of them
+    const pins=savedSites().map(s=>{ const p=enOf(s); return {s,x:sx(p.E),y:sy(p.N)}; })
+      .filter(p=>inView(p.x,p.y,20));
+    for(const p of pins) taken.push([p.x-7,p.y-7,14,14]);
+    const showNames = kmPx>=6 || pins.length<=12;
+    ctx.font="600 12.5px Corbel,Candara,'Segoe UI',system-ui,sans-serif";
+    ctx.textBaseline="middle"; ctx.textAlign="left";
+    const pinLabels=[];
+    if(showNames) for(const p of pins){
+      const near=nearestPlace(p.s), t=titleOf(p.s, near&&near.d<12?near.name:null);
+      const w=ctx.measureText(t).width;
+      const left = p.x+10+w > W-48;                      // the zoom buttons sit on the right
+      const bx = left ? p.x-13-w : p.x+9;
+      if(p.s===sel || free(bx,p.y-8,w+4,16)){ taken.push([bx,p.y-8,w+4,16]); pinLabels.push([t,bx+1,p.y]); }
+    }
+
+    // towns: cities from afar, towns closer in, villages when zoomed right in
+    if(!places && PLACES.length) places=PLACES.map(pl=>{ const en=toEN(pl.la,pl.lo); return {n:pl.n,p:pl.p,E:en.E,N:en.N}; });
+    if(places){
+      const tiers=[["city",0,"600 12px",C.soft],["town",4,"11.5px",C.soft],["village",25,"11px",C.faint]];
+      ctx.textBaseline="middle";
+      for(const [kind,minPx,font,colr] of tiers){
+        if(kmPx<minPx) continue;
+        ctx.font=font+" Corbel,Candara,'Segoe UI',system-ui,sans-serif";
+        for(const pl of places){
+          if(pl.p!==kind) continue;
+          const x=sx(pl.E), y=sy(pl.N);
+          if(!inView(x,y,0)) continue;
+          const w=ctx.measureText(pl.n).width;
+          if(!free(x-10,y-11,w+26,22)) continue;          // with room around it
+          taken.push([x-2,y-7,w+10,14]);
+          ctx.fillStyle=colr; ctx.globalAlpha=kind==="village"?.85:1;
+          ctx.fillRect(x-1.5,y-1.5,3,3);
+          ctx.fillText(pl.n,x+5,y);
+        }
+      }
+      ctx.globalAlpha=1;
+    }
+
+    // where "Near" is set
+    if(o.pins && S.loc){
+      const p=toEN(S.loc.la,S.loc.lo), x=sx(p.E), y=sy(p.N);
+      if(inView(x,y,10)){
+        ctx.strokeStyle=C.blue; ctx.lineWidth=2;
+        ctx.beginPath(); ctx.arc(x,y,6,0,7); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x-10,y); ctx.lineTo(x-3,y); ctx.moveTo(x+3,y); ctx.lineTo(x+10,y);
+        ctx.moveTo(x,y-10); ctx.lineTo(x,y-3); ctx.moveTo(x,y+3); ctx.lineTo(x,y+10); ctx.stroke();
+      }
+    }
+
+    // pins on top: orange to go, hollow once visited
+    for(const p of pins){
+      const done=!!S.visited[p.s.i];
+      ctx.beginPath(); ctx.arc(p.x,p.y,done?4.5:5.5,0,7);
+      ctx.fillStyle=done?C.land:C.pin; ctx.fill();
+      ctx.lineWidth=done?2:1.5; ctx.strokeStyle=done?C.faint:C.land; ctx.stroke();
+      if(p.s===sel){ ctx.beginPath(); ctx.arc(p.x,p.y,9.5,0,7); ctx.lineWidth=2; ctx.strokeStyle=C.ink; ctx.stroke(); }
+    }
+    ctx.font="600 12.5px Corbel,Candara,'Segoe UI',system-ui,sans-serif";
+    ctx.textBaseline="middle"; ctx.textAlign="left"; ctx.lineJoin="round";
+    for(const [t,x,y] of pinLabels){
+      ctx.lineWidth=3; ctx.strokeStyle=C.land; ctx.strokeText(t,x,y);
+      ctx.fillStyle=C.ink; ctx.fillText(t,x,y);
+    }
+
+    if(o.overlay) o.overlay(ctx,{W,H,sc,C,cx,cy});
+
+    // scale bar, in miles (its spot was reserved before the labels went down)
+    ctx.strokeStyle=C.ink; ctx.lineWidth=1.5; ctx.globalAlpha=.8;
+    ctx.beginPath(); ctx.moveTo(bar.x,bar.y-4); ctx.lineTo(bar.x,bar.y); ctx.lineTo(bar.x+bar.len,bar.y); ctx.lineTo(bar.x+bar.len,bar.y-4); ctx.stroke();
+    ctx.font="11px Consolas,ui-monospace,monospace"; ctx.fillStyle=C.ink; ctx.textBaseline="bottom"; ctx.textAlign="left";
+    ctx.fillText(bar.mi+" mi",bar.x+4,bar.y-3);
+    ctx.globalAlpha=1;
+  }
+
+  function showPop(site){
+    sel=site;
+    if(!site){ pop.hidden=true; draw(); return; }
+    const done=!!S.visited[site.i];
+    const near=nearestPlace(site), nearName=near&&near.d<12?near.name:null;
+    const kindLabel=(KINDS.find(k=>k[0]===site.c)||["","ruin"])[1];
+    const d=S.loc?distMi(S.loc.la,S.loc.lo,site.la,site.lo):null;
+    const ph=PHOTOS[site.i]&&PHOTOS[site.i][0];
+    pop.className="mappop"+(done?" done":"");
+    pop.innerHTML=`
+      ${ph?`<img src="${esc(ph.f)}" alt="">`:""}
+      <div class="txt">
+        <div class="nm display">${esc(titleOf(site,nearName))}</div>
+        <div class="sub">${esc(kindLabel)}${nearName?", near "+esc(nearName):""}</div>
+        <div class="sub data">${esc(osGridRef(site.la,site.lo)||"")}${d!=null?` &middot; ${d<10?d.toFixed(1):Math.round(d)} mi`:""}</div>
+        ${S.notes[site.i]?`<div class="note">${esc(S.notes[site.i])}</div>`:""}
+      </div>
+      <button class="tick" role="checkbox" aria-checked="${done}" title="Visited" aria-label="Mark as visited">
+        <svg viewBox="0 0 24 24"><path d="M5 13l5 5L19 7"/></svg>
+      </button>
+      <button class="drop-x" aria-label="Close">&times;</button>`;
+    pop.hidden=false;
+    const im=pop.querySelector("img");
+    if(im) im.onerror=()=>im.remove();
+    pop.querySelector(".tick").onclick=()=>{
+      if(S.visited[site.i]) delete S.visited[site.i]; else S.visited[site.i]=Date.now();
+      save(); renderSaved(); showPop(site);
+    };
+    pop.querySelector(".drop-x").onclick=()=>showPop(null);
+    draw();
+  }
+
+  function pinAt(px,py){
+    let best=null, bd=16*16;
+    for(const s of savedSites()){
+      const p=enOf(s), dx=sx(p.E)-px, dy=sy(p.N)-py, d=dx*dx+dy*dy;
+      if(d<bd){ bd=d; best=s; }
+    }
+    return best;
+  }
+
+  // ---- pointer handling: drag, pinch, wheel, tap, double tap
+  const pts=new Map();
+  let start=null, pinch=null, lastTap=null;
+  const local=e=>{ const r=cv.getBoundingClientRect(); return {x:e.clientX-r.left, y:e.clientY-r.top}; };
+  cv.addEventListener("pointerdown",e=>{
+    cv.setPointerCapture(e.pointerId);
+    pts.set(e.pointerId,local(e));
+    if(pts.size===1){ const p=local(e); start={x:p.x,y:p.y,cx,cy,moved:false}; pinch=null; }
+    else if(pts.size===2){
+      const [a,b]=[...pts.values()];
+      pinch={d:Math.hypot(a.x-b.x,a.y-b.y)||1, sc, mx:(a.x+b.x)/2, my:(a.y+b.y)/2, cx, cy};
+      if(start) start.moved=true;
+    }
+  });
+  cv.addEventListener("pointermove",e=>{
+    if(!pts.has(e.pointerId)) return;
+    pts.set(e.pointerId,local(e));
+    if(pinch && pts.size>=2){
+      const [a,b]=[...pts.values()];
+      const d=Math.hypot(a.x-b.x,a.y-b.y)||1, mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
+      // keep the ground under the fingers' midpoint under it
+      const E=pinch.cx+(pinch.mx-W/2)/pinch.sc, N=pinch.cy-(pinch.my-H/2)/pinch.sc;
+      sc=pinch.sc*d/pinch.d; clampView();
+      cx=E-(mx-W/2)/sc; cy=N+(my-H/2)/sc; clampView(); draw();
+    } else if(start && pts.size===1){
+      const p=local(e), dx=p.x-start.x, dy=p.y-start.y;
+      if(Math.abs(dx)+Math.abs(dy)>5) start.moved=true;
+      if(start.moved){ cx=start.cx-dx/sc; cy=start.cy+dy/sc; clampView(); draw(); }
+    }
+  });
+  const end=e=>{
+    if(!pts.has(e.pointerId)) return;
+    const p=local(e);
+    pts.delete(e.pointerId);
+    if(pts.size<2) pinch=null;
+    if(pts.size===0 && start && !start.moved && e.type==="pointerup"){
+      const now=Date.now();
+      if(lastTap && now-lastTap.t<320 && Math.hypot(p.x-lastTap.x,p.y-lastTap.y)<25){
+        lastTap=null; zoomAt(p.x,p.y,2);
+      } else {
+        lastTap={t:now,x:p.x,y:p.y};
+        if(o.pins) showPop(pinAt(p.x,p.y));
+      }
+    }
+    if(pts.size===0) start=null;
+    else if(pts.size===1){ const q=[...pts.values()][0]; start={x:q.x,y:q.y,cx,cy,moved:true}; }
+  };
+  cv.addEventListener("pointerup",end);
+  cv.addEventListener("pointercancel",end);
+  cv.addEventListener("wheel",e=>{
+    e.preventDefault();
+    const p=local(e);
+    zoomAt(p.x,p.y,Math.exp(-e.deltaY*(e.deltaMode===1?0.05:0.0015)));
+  },{passive:false});
+  o.zin.onclick=()=>zoomAt(W/2,H/2,2);
+  o.zout.onclick=()=>zoomAt(W/2,H/2,0.5);
+  if(o.zfit) o.zfit.onclick=()=>fit();
+  // Fit to the pins whenever the list of saved places has changed since the
+  // last fit; otherwise keep the view where it was left.
+  function place(){
+    if(!o.pins){ clampView(); draw(); return; }
+    const key=S.saved.join(",");
+    if(key!==fittedFor){ fittedFor=key; fit(); } else { clampView(); draw(); }
+  }
+  if(window.ResizeObserver) new ResizeObserver(()=>{ if(!box.hidden && size()) place(); }).observe(box);
+
+  return {
+    size, draw, toEN,
+    view(){ return {cx,cy,sc,W,H}; },
+    setView(E,N,s){ cx=E; cy=N; sc=s; clampView(); draw(); },
+    // called whenever the saved list changes or the map comes into view
+    refresh(){
+      if(box.hidden) return;
+      if(sel && !savedSet.has(sel.i)) showPop(null);
+      const n=S.saved.length;
+      note.hidden=!!n;
+      note.textContent=n?"":"Nothing saved yet. Swipe right on a site and it is pinned here.";
+      if(!coast){ note.hidden=false; note.textContent="The map outline (data/map.js) is missing."; }
+      if(size()) place();
+    },
+    redraw(){ draw(); }
+  };
+}
+const savedMap = makeMap({
+  box:document.getElementById("mapBox"), cv:document.getElementById("mapCanvas"),
+  pop:document.getElementById("mapPop"), note:document.getElementById("mapNote"), pins:true,
+  zin:document.getElementById("m-in"), zout:document.getElementById("m-out"), zfit:document.getElementById("m-fit")
+});
+
+function setSavedView(v){
+  S.savedView=v; save();
+  const map=v==="map";
+  document.getElementById("v-list").setAttribute("aria-pressed",String(!map));
+  document.getElementById("v-map").setAttribute("aria-pressed",String(map));
+  savedList.hidden=map;
+  document.getElementById("mapBox").hidden=!map;
+  document.getElementById("app").classList.toggle("wide", map && document.getElementById("p-saved").getAttribute("data-on")==="1");
+  renderSaved();
+}
+document.getElementById("v-list").onclick=()=>setSavedView("list");
+document.getElementById("v-map").onclick=()=>setSavedView("map");
+
+/* ================================================================
+   Filters
+   ================================================================ */
+const kindsBox=document.getElementById("kinds");
+KINDS.forEach(([k,label])=>{
+  const b=document.createElement("button");
+  b.type="button"; b.textContent=label;
+  b.setAttribute("aria-pressed", S.kinds.includes(k));
+  b.onclick=()=>{
+    if(S.kinds.includes(k)) S.kinds=S.kinds.filter(x=>x!==k);
+    else S.kinds.push(k);
+    if(!S.kinds.length) S.kinds=[k];
+    b.setAttribute("aria-pressed", S.kinds.includes(k));
+    [...kindsBox.children].forEach((c,i)=>c.setAttribute("aria-pressed",S.kinds.includes(KINDS[i][0])));
+    save(); buildDeck();
+  };
+  kindsBox.appendChild(b);
+});
+
+const placeInput=document.getElementById("place"), ac=document.getElementById("ac");
+/* Search ignores case, accents, apostrophes and hyphens, so "sutton on sea"
+   finds Sutton-on-Sea and "kings lynn" King's Lynn. */
+const placeKey=s=>s.normalize("NFKD").replace(/[\u0300-\u036f]/g,"").toLowerCase()
+  .replace(/['\u2019.]/g,"").replace(/[^a-z0-9]+/g," ").trim();
+const keyOf=p=>p._k||(p._k=placeKey(p.n));
+if(S.loc) placeInput.value=S.loc.n;
+
+/* The list has set distances; one chosen with the map's slider is added
+   to it as its own entry, so the box always shows what is in use. */
+function setRadiusSelect(v){
+  const sel=document.getElementById("radius");
+  if(![...sel.options].some(o=>+o.value===+v)){
+    sel.querySelectorAll("option[data-own]").forEach(o=>o.remove());
+    const o=document.createElement("option");
+    o.value=String(v); o.textContent=v+" mi"; o.dataset.own="1";
+    const after=[...sel.options].find(x=>+x.value>+v);
+    sel.insertBefore(o, after||null);
+  }
+  sel.value=String(v);
+}
+setRadiusSelect(S.radius);
+document.getElementById("radius").onchange=e=>{ S.radius=+e.target.value; save(); buildDeck(); };
+
+function setLoc(l){
+  S.loc=l; placeInput.value=l?l.n:"";
+  ac.hidden=true; save(); buildDeck(); renderSaved();
+}
+placeInput.addEventListener("input",()=>{
+  const q=placeInput.value.trim();
+  const coord=q.match(/^\s*(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$/);
+  if(coord){
+    ac.innerHTML=`<div data-coord="1">Use ${esc(coord[1])}, ${esc(coord[2])}<small>coordinates</small></div>`;
+    ac.hidden=false;
+    ac.firstChild.onclick=()=>setLoc({n:`${(+coord[1]).toFixed(3)}, ${(+coord[2]).toFixed(3)}`,la:+coord[1],lo:+coord[2]});
+    return;
+  }
+  if(q.length<2){ ac.hidden=true; return; }
+  const ql=placeKey(q);
+  if(!ql){ ac.hidden=true; return; }
+  const hits=PLACES.filter(p=>keyOf(p).startsWith(ql)).slice(0,40)
+    .concat(PLACES.filter(p=>!keyOf(p).startsWith(ql)&&keyOf(p).includes(ql)).slice(0,20));
+  const rank={city:0,town:1,village:2,hamlet:3};
+  hits.sort((a,b)=>(rank[a.p]??4)-(rank[b.p]??4)||a.n.length-b.n.length);
+  const top=hits.slice(0,12);
+  if(!top.length){
+    ac.innerHTML=`<div><small>No match. Paste coordinates like 53.38,-1.47 instead.</small></div>`;
+    ac.hidden=false; return;
+  }
+  ac.textContent="";
+  top.forEach(p=>{
+    const d=document.createElement("div");
+    d.innerHTML=`<span>${esc(p.n)}</span><small>${esc(p.county||p.p||"")}</small>`;
+    d.onclick=()=>setLoc({n:p.n,la:p.la,lo:p.lo});
+    ac.appendChild(d);
+  });
+  ac.hidden=false;
+});
+/* Leaving the box: emptied means "anywhere" again; half-typed text that was
+   never picked goes back to the place actually in use, so the box never
+   shows a town the deck is not using. */
+placeInput.addEventListener("blur",()=>setTimeout(()=>{
+  ac.hidden=true;
+  if(document.activeElement===placeInput) return;
+  if(!placeInput.value.trim()){ if(S.loc) setLoc(null); }
+  else placeInput.value=S.loc?S.loc.n:"";
+},160));
+placeInput.addEventListener("keydown",e=>{
+  if(e.key==="Enter"&&!ac.hidden&&ac.firstChild){ e.preventDefault(); ac.firstChild.click(); }
+  if(e.key==="Enter"&&!placeInput.value.trim()&&S.loc){ e.preventDefault(); setLoc(null); }
+  if(e.key==="Escape") ac.hidden=true;
+});
+
+/* ================================================================
+   Choosing the area on a map: for places nowhere near a town. The
+   middle of the map is the point; the slider sets the circle.
+   ================================================================ */
+/* Grid metres back to latitude and longitude, by running the forward
+   conversion a few times and correcting (Newton's method). Converges to
+   well under a metre in four steps anywhere in Britain. */
+function enToLatLon(E,N){
+  const f=(la,lo)=>{ const g=wgs84ToOsgb36(la,lo); return osgb36ToEN(g.lat,g.lon); };
+  let la=49+(N+100000)/111200, lo=-2+(E-400000)/(111200*Math.cos(rad(la)));
+  for(let i=0;i<6;i++){
+    const p=f(la,lo), a=f(la+1e-4,lo), b=f(la,lo+1e-4);
+    const j11=(a.E-p.E)/1e-4, j12=(b.E-p.E)/1e-4, j21=(a.N-p.N)/1e-4, j22=(b.N-p.N)/1e-4;
+    const det=j11*j22-j12*j21, dE=E-p.E, dN=N-p.N;
+    la+=( j22*dE-j12*dN)/det; lo+=(-j21*dE+j11*dN)/det;
+    if(Math.abs(dE)+Math.abs(dN)<0.05) break;
+  }
+  return {la,lo};
+}
+
+const picker=(function(){
+  const dlg=document.getElementById("picker"), slider=document.getElementById("pkR");
+  const rv=document.getElementById("pkRv"), where=document.getElementById("pkWhere");
+  let R=25, pool=[], last="";
+  const M_PER_MI=1609.344;
+  const map=makeMap({
+    box:document.getElementById("pkBox"), cv:document.getElementById("pkCanvas"), pins:false,
+    zin:document.getElementById("pk-in"), zout:document.getElementById("pk-out"),
+    overlay(ctx,v){
+      const x=v.W/2, y=v.H/2, r=R*M_PER_MI*v.sc;
+      ctx.beginPath(); ctx.arc(x,y,r,0,7);
+      ctx.fillStyle=v.C.pin; ctx.globalAlpha=.1; ctx.fill(); ctx.globalAlpha=1;
+      ctx.lineWidth=2; ctx.strokeStyle=v.C.pin; ctx.stroke();
+      ctx.strokeStyle=v.C.ink; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(x,y,3,0,7); ctx.fillStyle=v.C.ink; ctx.fill();
+      ctx.beginPath(); ctx.moveTo(x-12,y); ctx.lineTo(x-6,y); ctx.moveTo(x+6,y); ctx.lineTo(x+12,y);
+      ctx.moveTo(x,y-12); ctx.lineTo(x,y-6); ctx.moveTo(x,y+6); ctx.lineTo(x,y+12); ctx.stroke();
+      describe(v.cx,v.cy);
+    }
+  });
+
+  // what is under the middle, and how many sites the circle takes in
+  function describe(E,N){
+    const key=Math.round(E/50)+":"+Math.round(N/50)+":"+R;
+    if(key===last) return;
+    last=key;
+    const c=enToLatLon(E,N), near=nearestPlace({i:"pick:"+key, la:c.la, lo:c.lo});
+    const n=pool.reduce((k,s)=>k+(distMi(c.la,c.lo,s.la,s.lo)<=R?1:0),0);
+    where.innerHTML=`<span class="data">${esc(osGridRef(c.la,c.lo)||c.la.toFixed(3)+", "+c.lo.toFixed(3))}</span>`+
+      (near&&near.d<15?` &middot; ${near.d<1?"in":near.d.toFixed(0)+" mi from"} ${esc(near.name)}`:"")+
+      ` &middot; <b>${n}</b> site${n===1?"":"s"} in the circle`;
+  }
+
+  // keep the circle a sensible size on screen as the radius changes
+  function frame(force){
+    const v=map.view(), m=Math.min(v.W,v.H), px=R*M_PER_MI*v.sc;
+    if(force || px>0.46*m || px<0.08*m) map.setView(v.cx,v.cy,0.33*m/(R*M_PER_MI));
+    else map.draw();
+  }
+
+  slider.oninput=()=>{ R=+slider.value; rv.textContent=R+" mi"; frame(false); };
+  document.getElementById("pk-cancel").onclick=()=>dlg.close();
+  document.getElementById("pk-use").onclick=()=>{
+    const v=map.view(), c=enToLatLon(v.cx,v.cy);
+    const near=nearestPlace({i:"pick:use:"+v.cx+":"+v.cy, la:c.la, lo:c.lo});
+    const ref=(osGridRef(c.la,c.lo)||`${c.la.toFixed(3)}, ${c.lo.toFixed(3)}`)    // off the grid: plain coordinates
+      .replace(/^(..) (\d{3})\d\d (\d{3})\d\d$/,"$1 $2 $3");
+    S.radius=R; setRadiusSelect(R);
+    dlg.close();
+    setLoc({n: near&&near.d<15 ? `Map: ${ref}, near ${near.name}` : `Map: ${ref}`, la:+c.la.toFixed(5), lo:+c.lo.toFixed(5)});
+  };
+
+  return {
+    open(){
+      // the sites that would be dealt, before the distance filter
+      const ks=kindSet(), po=photosOnly();
+      pool=SITES.filter(s=>!hiddenSet.has(s.i)&&!savedSet.has(s.i)&&(!po||PHOTOS[s.i])&&ks.has(s.c));
+      R=S.radius<=100?S.radius:25; slider.value=R; rv.textContent=R+" mi"; last="";
+      dlg.showModal();
+      requestAnimationFrame(()=>{
+        if(!map.size()) return;
+        const v=map.view();
+        if(S.loc){ const p=map.toEN(S.loc.la,S.loc.lo); map.setView(p.E,p.N,0.33*Math.min(v.W,v.H)/(R*M_PER_MI)); }
+        else map.setView(380000,600000,Math.min(v.W/720000,v.H/1150000));    // all of Great Britain
+      });
+    }
+  };
+})();
+document.getElementById("pickArea").onclick=()=>picker.open();
+
+/* ================================================================
+   Tabs, settings, counts
+   ================================================================ */
+const tabs={swipe:["t-swipe","p-swipe"],saved:["t-saved","p-saved"]};
+function show(which){
+  for(const [k,[t,p]] of Object.entries(tabs)){
+    document.getElementById(t).setAttribute("aria-selected",String(k===which));
+    document.getElementById(p).setAttribute("data-on",k===which?"1":"0");
+  }
+  document.getElementById("app").classList.toggle("wide", which==="saved" && S.savedView==="map");
+  if(which==="saved") renderSaved();
+}
+document.getElementById("t-swipe").onclick=()=>show("swipe");
+document.getElementById("t-saved").onclick=()=>show("saved");
+
+function updateCounts(){
+  document.getElementById("count").textContent =
+    SITES.length ? `${deck.length} to look at` : "no data";
+  document.getElementById("t-saved").textContent = S.saved.length?`Saved ${S.saved.length}`:"Saved";
+}
+
+const sheet=document.getElementById("sheet");
+document.getElementById("gear").onclick=()=>{
+  document.getElementById("s-total").textContent=SITES.length.toLocaleString();
+  document.getElementById("s-places").textContent=PLACES.length.toLocaleString();
+  document.getElementById("s-photos").textContent=Object.keys(PHOTOS).length.toLocaleString();
+  document.getElementById("s-saved").textContent=S.saved.length;
+  document.getElementById("s-hidden").textContent=S.hidden.length;
+  document.getElementById("hiddenLine").textContent = S.hidden.length
+    ? `${S.hidden.length} site${S.hidden.length===1?"":"s"} hidden. They will not come back on their own.`
+    : "Nothing hidden yet.";
+  document.getElementById("b-order").textContent = S.order==="near"?"Nearest first":"Mixed up";
+  document.getElementById("b-theme").textContent = S.theme==="light"?"Switch to dark":"Switch to light";
+  sheet.showModal();
+};
+document.getElementById("b-close").onclick=()=>sheet.close();
+document.getElementById("b-order").onclick=e=>{
+  S.order = S.order==="near"?"shuffle":"near";
+  e.target.textContent = S.order==="near"?"Nearest first":"Mixed up";
+  save(); buildDeck();
+};
+document.getElementById("b-theme").onclick=e=>{
+  S.theme = S.theme==="light"?"dark":"light";
+  document.documentElement.setAttribute("data-theme",S.theme);
+  e.target.textContent = S.theme==="light"?"Switch to dark":"Switch to light";
+  save(); renderDeck(); savedMap.redraw();
+};
+document.getElementById("b-unhide").onclick=()=>{
+  S.hidden=[]; hiddenSet.clear(); save();
+  document.getElementById("s-hidden").textContent="0";
+  document.getElementById("hiddenLine").textContent="Nothing hidden yet.";
+  buildDeck();
+};
+document.getElementById("b-export").onclick=()=>{
+  const blob=new Blob([JSON.stringify(S,null,1)],{type:"application/json"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download="wildfind-backup-"+new Date().toISOString().slice(0,10)+".json";
+  a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+};
+document.getElementById("b-import").onclick=()=>document.getElementById("importFile").click();
+document.getElementById("importFile").onchange=e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      const got=JSON.parse(r.result);
+      S=Object.assign(blank(),got);
+      hiddenSet.clear(); S.hidden.forEach(i=>hiddenSet.add(i));
+      savedSet.clear(); S.saved.forEach(i=>savedSet.add(i));
+      document.documentElement.setAttribute("data-theme",S.theme||"light");
+      setRadiusSelect(S.radius);
+      placeInput.value=S.loc?S.loc.n:"";
+      [...kindsBox.children].forEach((c,i)=>c.setAttribute("aria-pressed",S.kinds.includes(KINDS[i][0])));
+      save(); buildDeck(); setSavedView(S.savedView==="map"?"map":"list"); sheet.close();
+    }catch(err){
+      alert("That file could not be read as a WildFind backup.");
+    }
+  };
+  r.readAsText(f);
+};
+
+/* ================================================================
+   Go
+   ================================================================ */
+document.documentElement.setAttribute("data-theme",S.theme||"light");
+buildDeck();
+setSavedView(S.savedView==="map"?"map":"list");
+</script>
+</body>
+</html>

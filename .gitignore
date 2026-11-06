@@ -1,0 +1,23 @@
+# Downloaded photographs and their credits. Too big for Git.
+photos/
+photos-removed/
+ATTRIBUTION.txt
+
+# The fetcher's progress files and its temporary downloads
+tools/state/
+*.part
+*.part.version
+*.osm.pbf
+!tests/fixtures/*.osm.pbf
+*.sql.gz
+*.tmp
+
+# Python
+__pycache__/
+*.pyc
+
+# Editors and Windows
+.vscode/
+Thumbs.db
+desktop.ini
+node_modules/

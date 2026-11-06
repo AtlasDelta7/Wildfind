@@ -1,0 +1,15 @@
+# Let Git manage line endings for text files...
+* text=auto
+
+# ...but Windows scripts and the plain-text readmes always get Windows line
+# endings. A .bat file with Unix line endings can misbehave in cmd.exe.
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+*.txt  text eol=crlf
+
+# Never touch binary files
+*.pbf  binary
+*.jpg  binary
+*.png  binary
+*.gz   binary
